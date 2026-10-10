@@ -28,6 +28,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /categories", h.listCategories)
 	mux.HandleFunc("POST /transactions", h.createTransaction)
 	mux.HandleFunc("POST /transactions/{id}/void", h.voidTransaction)
+	mux.HandleFunc("PUT /budgets/{id}", h.setBudget)
+	mux.HandleFunc("GET /budgets", h.budgetReport)
 }
 
 type accountResponse struct {
@@ -94,6 +96,10 @@ var problems = map[error]apiProblem{
 	ErrInvalidReason:       {http.StatusBadRequest, "invalid_reason", "The reason must be at most 500 characters."},
 	ErrInvalidKey:          {http.StatusBadRequest, "invalid_idempotency_key", "The Idempotency-Key header must be 1 to 100 letters, digits, dashes or underscores."},
 	ErrKindMismatch:        {http.StatusBadRequest, "kind_mismatch", "The transaction kind must match the category kind."},
+	ErrInvalidLimit:        {http.StatusBadRequest, "invalid_limit", "The budget limit must be a whole number of paise from 0 upwards."},
+	ErrInvalidMonth:        {http.StatusBadRequest, "invalid_month", "The month must be written as YYYY-MM."},
+	ErrBudgetCommitted:     {http.StatusBadRequest, "budget_committed", "Committed categories are fixed costs and are not budgeted."},
+	ErrBudgetNotExpense:    {http.StatusBadRequest, "budget_not_expense", "Only expense categories can have a budget."},
 	ErrCommittedIncome:     {http.StatusBadRequest, "invalid_committed", "Only expense categories can be committed."},
 	ErrAccountNotFound:     {http.StatusNotFound, "account_not_found", "No account with that ID."},
 	ErrCategoryNotFound:    {http.StatusNotFound, "category_not_found", "No category with that ID."},
@@ -276,4 +282,65 @@ func (h *Handler) voidTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpjson.Write(w, http.StatusOK, toTransactionResponse(tx))
+}
+
+type budgetLineResponse struct {
+	CategoryID     string `json:"categoryId"`
+	CategoryName   string `json:"categoryName"`
+	LimitPaise     int64  `json:"limitPaise"`
+	SpentPaise     int64  `json:"spentPaise"`
+	RemainingPaise int64  `json:"remainingPaise"`
+}
+
+type budgetReportResponse struct {
+	Month                        string               `json:"month"`
+	Lines                        []budgetLineResponse `json:"lines"`
+	TotalLimitPaise              int64                `json:"totalLimitPaise"`
+	TotalSpentPaise              int64                `json:"totalSpentPaise"`
+	TotalRemainingPaise          int64                `json:"totalRemainingPaise"`
+	UnbudgetedDiscretionaryPaise int64                `json:"unbudgetedDiscretionaryPaise"`
+}
+
+func (h *Handler) setBudget(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.pathID(w, r, ErrCategoryNotFound)
+	if !ok {
+		return
+	}
+	var req struct {
+		LimitPaise int64 `json:"limitPaise"`
+	}
+	if err := httpjson.Decode(w, r, &req); err != nil {
+		h.badBody(w)
+		return
+	}
+	budget, err := h.service.SetBudget(r.Context(), id, req.LimitPaise)
+	if err != nil {
+		h.fail(w, "set budget", err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, map[string]any{
+		"categoryId": budget.CategoryID.String(),
+		"limitPaise": budget.LimitPaise,
+		"updatedAt":  budget.UpdatedAt,
+	})
+}
+
+func (h *Handler) budgetReport(w http.ResponseWriter, r *http.Request) {
+	report, err := h.service.BudgetReport(r.Context(), r.URL.Query().Get("month"))
+	if err != nil {
+		h.fail(w, "budget report", err)
+		return
+	}
+	lines := make([]budgetLineResponse, 0, len(report.Lines))
+	for _, l := range report.Lines {
+		lines = append(lines, budgetLineResponse{
+			CategoryID: l.CategoryID.String(), CategoryName: l.CategoryName,
+			LimitPaise: l.LimitPaise, SpentPaise: l.SpentPaise, RemainingPaise: l.RemainingPaise,
+		})
+	}
+	httpjson.Write(w, http.StatusOK, budgetReportResponse{
+		Month: report.Month, Lines: lines, TotalLimitPaise: report.TotalLimitPaise,
+		TotalSpentPaise: report.TotalSpentPaise, TotalRemainingPaise: report.TotalRemainingPaise,
+		UnbudgetedDiscretionaryPaise: report.UnbudgetedDiscretionaryPaise,
+	})
 }

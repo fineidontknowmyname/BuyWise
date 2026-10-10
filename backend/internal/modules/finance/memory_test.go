@@ -14,6 +14,7 @@ type memoryRepo struct {
 	accounts     []Account
 	categories   []Category
 	transactions []Transaction
+	budgets      []Budget
 }
 
 func newMemoryRepo() *memoryRepo { return &memoryRepo{} }
@@ -131,4 +132,35 @@ func (m *memoryRepo) VoidTransaction(_ context.Context, id uuid.UUID, at time.Ti
 		return t, nil
 	}
 	return Transaction{}, ErrTransactionNotFound
+}
+
+func (m *memoryRepo) UpsertBudget(_ context.Context, budget Budget) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, b := range m.budgets {
+		if b.CategoryID == budget.CategoryID {
+			m.budgets[i] = budget
+			return nil
+		}
+	}
+	m.budgets = append(m.budgets, budget)
+	return nil
+}
+
+func (m *memoryRepo) ListBudgets(context.Context) ([]Budget, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]Budget{}, m.budgets...), nil
+}
+
+func (m *memoryRepo) SpentByCategory(_ context.Context, from, to time.Time) (map[uuid.UUID]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	spent := map[uuid.UUID]int64{}
+	for _, t := range m.transactions {
+		if t.Kind == Expense && !t.Voided() && !t.OccurredOn.Before(from) && t.OccurredOn.Before(to) {
+			spent[t.CategoryID] += t.AmountPaise
+		}
+	}
+	return spent, nil
 }

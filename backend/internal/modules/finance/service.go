@@ -9,6 +9,7 @@ import (
 )
 
 type Repository interface {
+	BudgetRepository
 	CreateAccount(ctx context.Context, account Account) error
 	ListAccounts(ctx context.Context) ([]AccountSummary, error)
 	GetAccount(ctx context.Context, id uuid.UUID) (AccountSummary, error)

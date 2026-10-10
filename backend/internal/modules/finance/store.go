@@ -258,3 +258,72 @@ func scanTransaction(row pgx.Row) (Transaction, error) {
 	}
 	return tx, nil
 }
+
+func (s *Store) UpsertBudget(ctx context.Context, budget Budget) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO finance.budgets (category_id, limit_paise, updated_at) VALUES ($1::uuid, $2, $3)
+		ON CONFLICT (category_id) DO UPDATE SET limit_paise = EXCLUDED.limit_paise, updated_at = EXCLUDED.updated_at`,
+		budget.CategoryID.String(), budget.LimitPaise, budget.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("save budget: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ListBudgets(ctx context.Context) ([]Budget, error) {
+	rows, err := s.pool.Query(ctx, `SELECT category_id::text, limit_paise, updated_at FROM finance.budgets ORDER BY category_id`)
+	if err != nil {
+		return nil, fmt.Errorf("list budgets: %w", err)
+	}
+	defer rows.Close()
+
+	list := []Budget{}
+	for rows.Next() {
+		var budget Budget
+		var id string
+		if err := rows.Scan(&id, &budget.LimitPaise, &budget.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("list budgets: %w", err)
+		}
+		parsed, err := uuid.Parse(id)
+		if err != nil {
+			return nil, fmt.Errorf("parse category id: %w", err)
+		}
+		budget.CategoryID = parsed
+		budget.UpdatedAt = budget.UpdatedAt.UTC()
+		list = append(list, budget)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list budgets: %w", err)
+	}
+	return list, nil
+}
+
+func (s *Store) SpentByCategory(ctx context.Context, fromInclusive, toExclusive time.Time) (map[uuid.UUID]int64, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT category_id::text, SUM(amount_paise)::bigint FROM finance.transactions
+		WHERE kind = 'expense' AND voided_at IS NULL AND occurred_on >= $1::date AND occurred_on < $2::date
+		GROUP BY category_id`,
+		fromInclusive.Format(DateLayout), toExclusive.Format(DateLayout))
+	if err != nil {
+		return nil, fmt.Errorf("sum spending: %w", err)
+	}
+	defer rows.Close()
+
+	spent := map[uuid.UUID]int64{}
+	for rows.Next() {
+		var id string
+		var total int64
+		if err := rows.Scan(&id, &total); err != nil {
+			return nil, fmt.Errorf("sum spending: %w", err)
+		}
+		parsed, err := uuid.Parse(id)
+		if err != nil {
+			return nil, fmt.Errorf("parse category id: %w", err)
+		}
+		spent[parsed] = total
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("sum spending: %w", err)
+	}
+	return spent, nil
+}

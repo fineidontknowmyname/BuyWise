@@ -53,6 +53,23 @@ export type Transaction = {
 	createdAt: string;
 };
 
+export type BudgetLine = {
+	categoryId: string;
+	categoryName: string;
+	limitPaise: number;
+	spentPaise: number;
+	remainingPaise: number;
+};
+
+export type BudgetReport = {
+	month: string;
+	lines: BudgetLine[];
+	totalLimitPaise: number;
+	totalSpentPaise: number;
+	totalRemainingPaise: number;
+	unbudgetedDiscretionaryPaise: number;
+};
+
 export type ApiError = { code: string; message: string };
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; error: ApiError };

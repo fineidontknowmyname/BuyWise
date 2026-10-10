@@ -17,6 +17,7 @@
 		<li><a href={resolve('/goals')}>Purchase goals</a></li>
 		<li><a href={resolve('/accounts')}>Accounts</a></li>
 		<li><a href={resolve('/categories')}>Categories</a></li>
+		<li><a href={resolve('/budgets')}>Budgets</a></li>
 	</ul>
 	<h2>System status</h2>
 	<ul>
