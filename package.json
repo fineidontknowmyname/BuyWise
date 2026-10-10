@@ -1,0 +1,16 @@
+{
+	"name": "self-emi",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"setup": "node scripts/go.mjs mod download && pnpm --dir frontend install",
+		"dev": "node --env-file-if-exists=backend/.env scripts/dev.mjs",
+		"migrate": "node --env-file-if-exists=backend/.env scripts/go.mjs run ./cmd/migrate",
+		"test": "pnpm run test:go && pnpm run test:web",
+		"test:go": "node --env-file-if-exists=backend/.env scripts/go.mjs test ./...",
+		"test:web": "pnpm --dir frontend test",
+		"lint": "pnpm run lint:go && pnpm --dir frontend lint && pnpm --dir frontend check",
+		"lint:go": "node scripts/gofmt-check.mjs && node scripts/go.mjs vet ./...",
+		"format": "node scripts/go.mjs fmt ./... && pnpm --dir frontend format"
+	}
+}
