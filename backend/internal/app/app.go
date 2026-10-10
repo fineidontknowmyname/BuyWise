@@ -13,14 +13,16 @@ import (
 )
 
 type Dependencies struct {
-	DB        httpserver.Pinger
-	GoalsRepo goals.Repository
-	Logger    *slog.Logger
-	Now       func() time.Time
+	DB          httpserver.Pinger
+	GoalsRepo   goals.Repository
+	FinanceRepo finance.Repository
+	Logger      *slog.Logger
+	Now         func() time.Time
 }
 
 func NewHandler(deps Dependencies) http.Handler {
 	goalService := goals.NewService(deps.GoalsRepo, deps.Now)
+	financeService := finance.NewService(deps.FinanceRepo, deps.Now)
 	decisionService := decision.NewService(
 		goalLookup{goals: goalService},
 		decision.StubEngine{},
@@ -30,6 +32,7 @@ func NewHandler(deps Dependencies) http.Handler {
 	)
 	return httpserver.NewRouter(deps.DB,
 		goals.NewHandler(goalService, deps.Logger),
+		finance.NewHandler(financeService, deps.Logger),
 		decision.NewHandler(decisionService, deps.Logger),
 	)
 }

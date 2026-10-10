@@ -24,6 +24,35 @@ export type Decision = {
 	allInputsReal: boolean;
 };
 
+export type Account = {
+	id: string;
+	name: string;
+	openingBalancePaise: number;
+	balancePaise: number;
+	createdAt: string;
+};
+
+export type Category = {
+	id: string;
+	name: string;
+	kind: 'income' | 'expense';
+	committed: boolean;
+};
+
+export type Transaction = {
+	id: string;
+	accountId: string;
+	categoryId: string;
+	kind: 'income' | 'expense';
+	amountPaise: number;
+	occurredOn: string;
+	note: string;
+	voided: boolean;
+	voidedAt: string | null;
+	voidReason: string;
+	createdAt: string;
+};
+
 export type ApiError = { code: string; message: string };
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; error: ApiError };

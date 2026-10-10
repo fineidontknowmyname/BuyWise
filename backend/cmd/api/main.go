@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"selfemi/internal/app"
+	"selfemi/internal/modules/finance"
 	"selfemi/internal/modules/goals"
 	"selfemi/internal/platform/config"
 	"selfemi/internal/platform/database"
@@ -44,10 +45,11 @@ func run(logger *slog.Logger) error {
 	server := &http.Server{
 		Addr: cfg.APIAddr,
 		Handler: app.NewHandler(app.Dependencies{
-			DB:        pool,
-			GoalsRepo: goals.NewStore(pool),
-			Logger:    logger,
-			Now:       time.Now,
+			DB:          pool,
+			GoalsRepo:   goals.NewStore(pool),
+			FinanceRepo: finance.NewStore(pool),
+			Logger:      logger,
+			Now:         time.Now,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

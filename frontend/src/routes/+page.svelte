@@ -13,7 +13,11 @@
 
 <main>
 	<h1>Self-EMI</h1>
-	<p><a href={resolve('/goals')}>Purchase goals</a></p>
+	<ul>
+		<li><a href={resolve('/goals')}>Purchase goals</a></li>
+		<li><a href={resolve('/accounts')}>Accounts</a></li>
+		<li><a href={resolve('/categories')}>Categories</a></li>
+	</ul>
 	<h2>System status</h2>
 	<ul>
 		<li>API: <strong data-testid="api-status">{labels[data.health.api]}</strong></li>
