@@ -16,6 +16,7 @@ var (
 )
 
 type Goal struct {
+	AllocatedPaise   int64      `json:"allocatedPaise"`
 	ID               uuid.UUID  `json:"id"`
 	Name             string     `json:"name"`
 	TargetPricePaise int64      `json:"targetPricePaise"`

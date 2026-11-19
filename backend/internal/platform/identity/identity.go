@@ -59,7 +59,7 @@ type credentials struct {
 func derive(password string, salt []byte) []byte {
 	key, err := pbkdf2.Key(sha256.New, password, salt, passwordRounds, 32)
 	if err != nil {
-		panic(err) // Parameters are constants validated by the standard library.
+		panic(err)
 	}
 	return key
 }

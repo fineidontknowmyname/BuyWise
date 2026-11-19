@@ -203,6 +203,9 @@ func scanCategory(row pgx.Row) (Category, error) {
 }
 
 func (s *Store) CreateTransaction(ctx context.Context, tx Transaction) (Transaction, bool, error) {
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return Transaction{}, false, err
+	}
 	tag, err := database.Scoped(ctx, s.pool).Exec(ctx,
 		`INSERT INTO finance.transactions
 			(id, account_id, category_id, kind, amount_paise, occurred_on, note, idempotency_key, created_at)
@@ -249,6 +252,9 @@ func (s *Store) ListTransactions(ctx context.Context, accountID uuid.UUID) ([]Tr
 }
 
 func (s *Store) VoidTransaction(ctx context.Context, id uuid.UUID, at time.Time, reason string) (Transaction, error) {
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return Transaction{}, err
+	}
 	row := database.Scoped(ctx, s.pool).QueryRow(ctx,
 		`UPDATE finance.transactions SET voided_at = $2, void_reason = $3
 		WHERE id = $1::uuid AND voided_at IS NULL RETURNING `+transactionColumns,

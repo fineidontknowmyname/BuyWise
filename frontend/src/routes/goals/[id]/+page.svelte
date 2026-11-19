@@ -253,6 +253,11 @@
 			<ArrowLeft size={16} />
 			<span>Back to Goals</span>
 		</a>
+		{#if data.goal}
+			<a href={resolve('/goals/[id]/plan', { id: data.goal.id })} class="btn btn-primary"
+				>Open savings plan</a
+			>
+		{/if}
 	</div>
 
 	<!-- Decision Hero Banner (Section 9) -->

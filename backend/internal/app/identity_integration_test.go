@@ -152,6 +152,37 @@ func TestIdentityIsolation(t *testing.T) {
 	}
 	assertJSON(request("GET", "/accounts/"+donor, first, "", 200), "balancePaise", "100000")
 	assertJSON(request("GET", "/accounts/"+firstAccount, first, "", 200), "balancePaise", "0")
+	purchase := field(request("POST", "/goals", first, `{"name":"Laptop","targetPricePaise":8000000,"savedAmountPaise":2000000,"priority":"high"}`, 201), "id")
+	planPath := "/goals/" + purchase + "/plan"
+	fundingPath := "/goals/" + purchase + "/contributions"
+	lifecyclePath := "/goals/" + purchase + "/lifecycle"
+	request("GET", planPath, second, "", 404)
+	assertJSON(request("GET", planPath, first, "", 200), "fundedPaise", "0")
+	request("PUT", planPath, first, `{"revision":0,"mode":"intelligent","frequency":"monthly","approvedPaise":3000000}`, 400)
+	terms := `{"revision":0,"mode":"intelligent","frequency":"monthly","approvedPaise":2000000}`
+	request("PUT", planPath, first, terms, 200)
+	request("PUT", planPath, first, terms, 409)
+	request("PUT", "/goals/"+id, first, `{"name":"First account only","targetPricePaise":9000000,"priority":"medium"}`, 200)
+	request("PUT", "/goals/"+id+"/plan", first, `{"revision":0,"mode":"simple","frequency":"monthly","approvedPaise":1500000}`, 200)
+	assertJSON(request("GET", "/goals/"+id+"/plan", first, "", 200), "monthlyAllocatedPaise", "900000")
+	assertJSON(request("POST", planPath+"/preview", first, `{"revision":1,"mode":"simple","frequency":"monthly","approvedPaise":10000}`, 200), "state", `"replan"`)
+	contribution := `{"accountId":"` + donor + `","amountPaise":80000,"idempotencyKey":"goal-fund-1"}`
+	request("POST", fundingPath, first, strings.Replace(contribution, donor, firstAccount, 1), 400)
+	request("POST", fundingPath, first, contribution, 204)
+	request("POST", fundingPath, first, contribution, 204)
+	request("POST", fundingPath, first, strings.Replace(contribution, "80000", "80001", 1), 409)
+	assertJSON(request("GET", "/accounts/"+donor, first, "", 200), "balancePaise", "100000")
+	assertJSON(request("GET", planPath, first, "", 200), "fundedPaise", "80000")
+	assertJSON(request("GET", "/goals/"+purchase, first, "", 200), "savedAmountPaise", "80000")
+	request("PUT", lifecyclePath, first, `{"status":"paused"}`, 204)
+	request("PUT", "/goals/"+purchase, first, `{"name":"Laptop revised","targetPricePaise":8000000,"priority":"high"}`, 200)
+	assertJSON(request("GET", planPath, first, "", 200), "state", `"paused"`)
+	request("POST", fundingPath, first, strings.Replace(contribution, "goal-fund-1", "goal-fund-2", 1), 409)
+	request("PUT", lifecyclePath, first, `{"status":"active"}`, 204)
+	request("PUT", lifecyclePath, first, `{"status":"cancelled"}`, 204)
+	request("PUT", lifecyclePath, first, `{"status":"active"}`, 409)
+	assertJSON(request("GET", planPath, first, "", 200), "fundedPaise", "80000")
+	assertJSON(request("GET", "/goals/"+purchase, first, "", 200), "savedAmountPaise", "0")
 	request("POST", "/auth/logout", first, "", 200)
 	request("GET", "/goals", first, "", 401)
 	retried := field(request("POST", "/auth/login", "", a, 200), "token")

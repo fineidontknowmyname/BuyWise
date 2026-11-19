@@ -19,7 +19,6 @@ CREATE TABLE identity.session_events (
     occurred_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Legacy records stay unassigned until an approved ownership mapping exists.
 CREATE FUNCTION identity.current_user_id() RETURNS uuid
 LANGUAGE sql STABLE AS $$
     SELECT NULLIF(current_setting('buywise.user_id', true), '')::uuid
@@ -134,7 +133,6 @@ CREATE UNIQUE INDEX categories_kind_name_unique ON finance.categories (user_id, 
 ALTER TABLE finance.transactions DROP CONSTRAINT transactions_idempotency_key_key;
 ALTER TABLE finance.transactions ADD UNIQUE NULLS NOT DISTINCT (user_id, idempotency_key);
 
--- The runtime switches to this non-owner role for all tenant statements.
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'buywise_tenant') THEN

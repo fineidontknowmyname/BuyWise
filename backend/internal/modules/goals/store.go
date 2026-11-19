@@ -50,6 +50,9 @@ func (s *Store) Create(ctx context.Context, goal Goal) error {
 }
 
 func (s *Store) Update(ctx context.Context, goal Goal) error {
+	if err := s.lockPlanning(ctx); err != nil {
+		return err
+	}
 	var prodID *string
 	if goal.ProductID != nil {
 		str := goal.ProductID.String()
@@ -59,18 +62,13 @@ func (s *Store) Update(ctx context.Context, goal Goal) error {
 	if priority == "" {
 		priority = "medium"
 	}
-	status := goal.Status
-	if status == "" {
-		status = "active"
-	}
 
 	cmd, err := database.Scoped(ctx, s.pool).Exec(ctx,
 		`UPDATE goals.goals SET
-			name = $2, target_price_paise = $3, saved_amount_paise = $4,
-			target_date = $5::date, priority = $6, product_id = $7::uuid, status = $8
+			name = $2, target_price_paise = $3,
+			target_date = $4::date, priority = $5, product_id = $6::uuid
 		WHERE id = $1::uuid`,
-		goal.ID.String(), goal.Name, goal.TargetPricePaise, goal.SavedAmountPaise,
-		goal.TargetDate, priority, prodID, status,
+		goal.ID.String(), goal.Name, goal.TargetPricePaise, goal.TargetDate, priority, prodID,
 	)
 	if err != nil {
 		return fmt.Errorf("update goal: %w", err)
@@ -85,7 +83,8 @@ func (s *Store) Get(ctx context.Context, id uuid.UUID) (Goal, error) {
 	row := database.Scoped(ctx, s.pool).QueryRow(ctx,
 		`SELECT
 			id::text, name, target_price_paise, saved_amount_paise,
-			target_date::text, priority, product_id::text, status, created_at
+			target_date::text, priority, product_id::text, status, created_at,
+            COALESCE((SELECT SUM(amount_paise) FROM goals.funding WHERE goal_id = goals.id), 0)::bigint
 		FROM goals.goals WHERE id = $1::uuid`,
 		id.String(),
 	)
@@ -103,7 +102,8 @@ func (s *Store) List(ctx context.Context) ([]Goal, error) {
 	rows, err := database.Scoped(ctx, s.pool).Query(ctx,
 		`SELECT
 			id::text, name, target_price_paise, saved_amount_paise,
-			target_date::text, priority, product_id::text, status, created_at
+			target_date::text, priority, product_id::text, status, created_at,
+            COALESCE((SELECT SUM(amount_paise) FROM goals.funding WHERE goal_id = goals.id), 0)::bigint
 		FROM goals.goals ORDER BY id`,
 	)
 	if err != nil {
@@ -132,7 +132,7 @@ func scanGoal(row pgx.Row) (Goal, error) {
 	var targetDate *string
 	err := row.Scan(
 		&idStr, &goal.Name, &goal.TargetPricePaise, &goal.SavedAmountPaise,
-		&targetDate, &goal.Priority, &prodStr, &goal.Status, &goal.CreatedAt,
+		&targetDate, &goal.Priority, &prodStr, &goal.Status, &goal.CreatedAt, &goal.AllocatedPaise,
 	)
 	if err != nil {
 		return Goal{}, err

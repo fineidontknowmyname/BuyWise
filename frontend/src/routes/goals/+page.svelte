@@ -31,8 +31,6 @@
 	let formVariant = $state('');
 	let formSpecs = $state('{}');
 	let formTargetPrice = $state('');
-	let formSavedAmount = $state('');
-	let formMonthlyContribution = $state('');
 	let formPriority = $state('medium');
 	let formTargetDate = $state('');
 	let formNotes = $state('');
@@ -455,19 +453,6 @@
 					bind:value={formTargetPrice}
 				/>
 			</div>
-			<div class="form-group">
-				<label for="create-goal-saved" class="label">Available Savings / Contribution (₹)</label>
-				<input
-					id="create-goal-saved"
-					name="savedAmount"
-					type="number"
-					step="0.01"
-					min="0"
-					placeholder="e.g. 10000"
-					class="input tabular-nums font-mono"
-					bind:value={formSavedAmount}
-				/>
-			</div>
 		</div>
 
 		<div class="form-grid-2">
@@ -492,19 +477,6 @@
 		</div>
 
 		<div class="form-grid-2">
-			<div class="form-group">
-				<label for="create-goal-monthly" class="label">Monthly Savings Contribution (₹)</label>
-				<input
-					id="create-goal-monthly"
-					name="monthlyContribution"
-					type="number"
-					step="0.01"
-					min="0"
-					placeholder="e.g. 5000 (Optional)"
-					class="input tabular-nums font-mono"
-					bind:value={formMonthlyContribution}
-				/>
-			</div>
 			<div class="form-group">
 				<label for="create-goal-notes" class="label">Notes (Optional)</label>
 				<input

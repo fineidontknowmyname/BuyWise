@@ -43,14 +43,11 @@ export const actions: Actions = {
 		}
 
 		const targetPriceRupees = parseFloat(String(form.get('targetPrice') ?? '0'));
-		const savedAmountRupees = parseFloat(String(form.get('savedAmount') ?? '0'));
 		const currentPriceRupees = parseFloat(String(form.get('currentPrice') ?? '0'));
 		const originalPriceRupees = parseFloat(String(form.get('originalPrice') ?? '0'));
 
 		const targetPricePaise =
 			isNaN(targetPriceRupees) || targetPriceRupees <= 0 ? 0 : Math.round(targetPriceRupees * 100);
-		const savedAmountPaise =
-			isNaN(savedAmountRupees) || savedAmountRupees <= 0 ? 0 : Math.round(savedAmountRupees * 100);
 		const currentPricePaise =
 			isNaN(currentPriceRupees) || currentPriceRupees <= 0
 				? targetPricePaise
@@ -114,7 +111,6 @@ export const actions: Actions = {
 			body: JSON.stringify({
 				name,
 				targetPricePaise: targetPricePaise || currentPricePaise,
-				savedAmountPaise,
 				targetDate,
 				priority,
 				productId,
@@ -126,6 +122,6 @@ export const actions: Actions = {
 			return fail(result.status, { name, error: result.error.message });
 		}
 
-		redirect(303, resolve('/goals/[id]', { id: result.data.id }));
+		redirect(303, resolve('/goals/[id]/plan', { id: result.data.id }));
 	}
 };

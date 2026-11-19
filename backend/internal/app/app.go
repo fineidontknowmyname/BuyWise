@@ -40,12 +40,19 @@ func newDomainHandler(deps Dependencies) http.Handler {
 		finance.StubStateSource{},
 		pricing.NewDecisionInputs(pricingService, pricing.StubForecast{}, deps.Now),
 	)
-	return httpserver.NewRouter(deps.DB,
+	modules := []httpserver.Module{
 		goals.NewHandler(goalService, deps.Logger),
 		finance.NewHandler(financeService, deps.Logger),
 		pricing.NewHandler(pricingService, deps.Logger),
 		decision.NewHandler(decisionService, deps.Logger),
-	)
+	}
+	if goalsStore, ok := deps.GoalsRepo.(*goals.Store); ok {
+		if financeStore, ok := deps.FinanceRepo.(*finance.Store); ok {
+			modules = append(modules, goals.NewPlanner(goalsStore, planningFinance{financeStore}, deps.Logger, deps.Now))
+		}
+	}
+	return httpserver.NewRouter(deps.DB, modules...)
+
 }
 
 func NewHandler(deps Dependencies) http.Handler {

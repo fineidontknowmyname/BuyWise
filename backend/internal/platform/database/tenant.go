@@ -26,3 +26,9 @@ func Scoped(ctx context.Context, fallback Queries) Queries {
 	}
 	return fallback
 }
+
+func LockPlanning(ctx context.Context, fallback Queries) error {
+	_, err := Scoped(ctx, fallback).Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtextextended('buywise.planning:' || identity.current_user_id()::text, 0))`)
+	return err
+}

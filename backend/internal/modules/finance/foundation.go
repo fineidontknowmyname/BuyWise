@@ -132,6 +132,9 @@ func (s *Store) loadProfile(ctx context.Context) (financialProfile, error) {
 }
 
 func (s *Store) saveProfile(ctx context.Context, profile financialProfile) (financialProfile, error) {
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return profile, err
+	}
 	raw, err := json.Marshal(profile)
 	if err != nil {
 		return profile, err
@@ -165,6 +168,9 @@ func (s *Store) designations(ctx context.Context) (map[string]string, error) {
 }
 
 func (s *Store) designate(ctx context.Context, accountID uuid.UUID, purpose string) error {
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return err
+	}
 	tag, err := database.Scoped(ctx, s.pool).Exec(ctx, `INSERT INTO finance.account_designations (account_id, purpose)
         SELECT id, $2 FROM finance.accounts WHERE id = $1::uuid
         ON CONFLICT (user_id, account_id) DO UPDATE SET purpose = EXCLUDED.purpose`, accountID.String(), purpose)
@@ -234,6 +240,9 @@ func (s *Store) listTransfers(ctx context.Context) ([]transfer, error) {
 }
 
 func (s *Store) createTransfer(ctx context.Context, input transferInput) (transfer, bool, error) {
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return transfer{}, false, err
+	}
 	db := database.Scoped(ctx, s.pool)
 	tag, err := db.Exec(ctx, `INSERT INTO finance.transfers
         (from_account_id, to_account_id, amount_paise, occurred_on, note, idempotency_key)
@@ -255,6 +264,9 @@ func (s *Store) createTransfer(ctx context.Context, input transferInput) (transf
 }
 
 func (s *Store) reverseTransfer(ctx context.Context, id uuid.UUID, today time.Time) (transfer, error) {
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return transfer{}, err
+	}
 	db := database.Scoped(ctx, s.pool)
 	_, err := db.Exec(ctx, `INSERT INTO finance.transfers
         (from_account_id, to_account_id, amount_paise, occurred_on, note, idempotency_key, reverses_id)

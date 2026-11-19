@@ -20,6 +20,7 @@ func NewHandler(service *Service, logger *slog.Logger) *Handler {
 }
 
 type goalResponse struct {
+	LegacySavedPaise int64     `json:"legacySavedPaise,omitempty"`
 	ID               string    `json:"id"`
 	Name             string    `json:"name"`
 	TargetPricePaise int64     `json:"targetPricePaise"`
@@ -47,11 +48,15 @@ func toResponse(goal Goal) goalResponse {
 		str := goal.ProductID.String()
 		prodID = &str
 	}
-	return goalResponse{
+	allocated := goal.AllocatedPaise
+	if goal.Status == "cancelled" || goal.Status == "completed" {
+		allocated = 0
+	}
+	return goalResponse{LegacySavedPaise: goal.SavedAmountPaise,
 		ID:               goal.ID.String(),
 		Name:             goal.Name,
 		TargetPricePaise: goal.TargetPricePaise,
-		SavedAmountPaise: goal.SavedAmountPaise,
+		SavedAmountPaise: allocated,
 		TargetDate:       goal.TargetDate,
 		Priority:         goal.Priority,
 		ProductID:        prodID,
@@ -84,7 +89,6 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	g := Goal{
 		Name:             req.Name,
 		TargetPricePaise: req.TargetPricePaise,
-		SavedAmountPaise: req.SavedAmountPaise,
 		TargetDate:       req.TargetDate,
 		Priority:         req.Priority,
 		ProductID:        prodUUID,
@@ -126,14 +130,13 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		ID:               id,
 		Name:             req.Name,
 		TargetPricePaise: req.TargetPricePaise,
-		SavedAmountPaise: req.SavedAmountPaise,
 		TargetDate:       req.TargetDate,
 		Priority:         req.Priority,
 		ProductID:        prodUUID,
 		Status:           req.Status,
 	}
 
-	updated, err := h.service.Update(r.Context(), g)
+	_, err = h.service.Update(r.Context(), g)
 	if errors.Is(err, ErrNotFound) {
 		httpjson.WriteError(w, http.StatusNotFound, "goal_not_found", "No goal with that ID.")
 		return
@@ -144,6 +147,11 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		h.internalError(w, "update goal", err)
+		return
+	}
+	updated, err := h.service.Get(r.Context(), id)
+	if err != nil {
+		h.internalError(w, "read updated goal", err)
 		return
 	}
 	httpjson.Write(w, http.StatusOK, toResponse(updated))
