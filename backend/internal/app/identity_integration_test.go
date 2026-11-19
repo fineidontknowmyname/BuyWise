@@ -110,6 +110,48 @@ func TestIdentityIsolation(t *testing.T) {
 	if err := tx.Rollback(ctx); err != nil {
 		t.Fatal(err)
 	}
+	request("GET", "/financial-profile", "", "", 401)
+	profile := `{"revision":0,"variableIncomePercent":70,"bufferPercent":10,"bufferMinimumPaise":500000,"emergencyTargetPaise":1000000,"items":[
+        {"name":"Salary","kind":"fixed_income","frequency":"monthly","amountPaise":6000000},
+        {"name":"Freelance","kind":"variable_income","frequency":"monthly","amountPaise":1000000},
+        {"name":"Bonus","kind":"irregular_income","frequency":"once","amountPaise":2000000},
+        {"name":"Rent","kind":"fixed_expense","frequency":"monthly","amountPaise":2000000},
+        {"name":"EMI","kind":"debt","frequency":"monthly","amountPaise":1000000},
+        {"name":"Personal","kind":"discretionary","frequency":"monthly","amountPaise":300000}]}`
+	request("PUT", "/financial-profile", first, profile, 200)
+	request("PUT", "/financial-profile", first, profile, 409)
+	assertJSON := func(body []byte, key, value string) {
+		t.Helper()
+		if !strings.Contains(string(body), "\""+key+"\":"+value) {
+			t.Fatalf("expected %s=%s in %s", key, value, body)
+		}
+	}
+	assertJSON(request("GET", "/financial-profile", first, "", 200), "safeSavingsPaise", "2900000")
+	assertJSON(request("GET", "/financial-profile", second, "", 200), "revision", "0")
+	donor := field(request("POST", "/accounts", first, `{"name":"Pay","openingBalancePaise":100000}`, 201), "id")
+	other := field(request("POST", "/accounts", second, `{"name":"Other","openingBalancePaise":0}`, 201), "id")
+	request("PUT", "/accounts/"+firstAccount+"/purpose", second, `{"purpose":"emergency_reserve"}`, 404)
+	request("PUT", "/accounts/"+firstAccount+"/purpose", first, `{"purpose":"emergency_reserve"}`, 204)
+	transfer := `{"fromAccountId":"` + donor + `","toAccountId":"` + firstAccount + `","amountPaise":25000,"occurredOn":"2020-01-01","idempotencyKey":"transfer-1"}`
+	transferID := field(request("POST", "/transfers", first, transfer, 201), "id")
+	if got := field(request("POST", "/transfers", first, transfer, 200), "id"); got != transferID {
+		t.Fatal("retry created a second transfer")
+	}
+	request("POST", "/transfers", first, strings.Replace(transfer, "25000", "25001", 1), 409)
+	request("POST", "/transfers", first, strings.ReplaceAll(strings.ReplaceAll(transfer, firstAccount, other), "transfer-1", "transfer-2"), 404)
+	assertJSON(request("GET", "/accounts/"+donor, first, "", 200), "balancePaise", "75000")
+	assertJSON(request("GET", "/accounts/"+firstAccount, first, "", 200), "balancePaise", "25000")
+	assertJSON(request("GET", "/financial-profile", first, "", 200), "emergencySavingsPaise", "25000")
+	if got := string(request("GET", "/transfers", second, "", 200)); strings.TrimSpace(got) != "[]" {
+		t.Fatalf("second account could see transfers: %s", got)
+	}
+	request("POST", "/transfers/"+transferID+"/reverse", second, "", 404)
+	reversed := field(request("POST", "/transfers/"+transferID+"/reverse", first, "", 200), "id")
+	if got := field(request("POST", "/transfers/"+transferID+"/reverse", first, "", 200), "id"); got != reversed {
+		t.Fatal("retry created a second reversal")
+	}
+	assertJSON(request("GET", "/accounts/"+donor, first, "", 200), "balancePaise", "100000")
+	assertJSON(request("GET", "/accounts/"+firstAccount, first, "", 200), "balancePaise", "0")
 	request("POST", "/auth/logout", first, "", 200)
 	request("GET", "/goals", first, "", 401)
 	retried := field(request("POST", "/auth/login", "", a, 200), "token")

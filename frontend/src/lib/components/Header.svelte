@@ -16,6 +16,7 @@
 		'/products': 'Products & Prices',
 		'/simulator': 'Affordability Simulator',
 		'/reports': 'Financial Reports',
+		'/finances': 'My finances',
 		'/accounts': 'Accounts',
 		'/budget': 'Budget & Categories',
 		'/categories': 'Budget & Categories',

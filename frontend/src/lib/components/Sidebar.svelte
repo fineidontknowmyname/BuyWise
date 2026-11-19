@@ -30,6 +30,7 @@
 		{ href: resolve('/products'), label: 'Products & Prices', icon: ShoppingBag },
 		{ href: resolve('/simulator'), label: 'Simulator', icon: Calculator },
 		{ href: resolve('/reports'), label: 'Reports', icon: FileText },
+		{ href: resolve('/finances'), label: 'My finances', icon: Wallet },
 		{ href: resolve('/accounts'), label: 'Accounts', icon: Wallet },
 		{ href: resolve('/budget'), label: 'Budget & Categories', icon: PieChart }
 	];

@@ -22,6 +22,8 @@ const accountSummarySelect = `SELECT a.id::text, a.name, a.opening_balance_paise
 	a.opening_balance_paise + COALESCE(SUM(
 		CASE t.kind WHEN 'income' THEN t.amount_paise WHEN 'expense' THEN -t.amount_paise END
 	), 0)::bigint
+    + COALESCE((SELECT SUM(amount_paise) FROM finance.transfers WHERE to_account_id = a.id), 0)::bigint
+    - COALESCE((SELECT SUM(amount_paise) FROM finance.transfers WHERE from_account_id = a.id), 0)::bigint
 FROM finance.accounts a
 LEFT JOIN finance.transactions t ON t.account_id = a.id AND t.voided_at IS NULL`
 

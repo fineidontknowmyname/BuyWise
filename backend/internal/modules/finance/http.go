@@ -36,6 +36,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /budgets/{id}", h.setBudget)
 	mux.HandleFunc("DELETE /budgets/{id}", h.deleteBudget)
 	mux.HandleFunc("GET /budgets", h.budgetReport)
+	if store, ok := h.service.repo.(*Store); ok {
+		foundationHandler{store: store, logger: h.logger, today: h.service.Today}.register(mux)
+	}
 }
 
 type accountResponse struct {
