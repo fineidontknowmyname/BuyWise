@@ -13,8 +13,10 @@ import (
 	"selfemi/internal/app"
 	"selfemi/internal/modules/finance"
 	"selfemi/internal/modules/goals"
+	"selfemi/internal/modules/pricing"
 	"selfemi/internal/platform/config"
 	"selfemi/internal/platform/database"
+	"selfemi/internal/platform/identity"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -46,8 +48,10 @@ func run(logger *slog.Logger) error {
 		Addr: cfg.APIAddr,
 		Handler: app.NewHandler(app.Dependencies{
 			DB:          pool,
+			Identity:    identity.New(pool),
 			GoalsRepo:   goals.NewStore(pool),
 			FinanceRepo: finance.NewStore(pool),
+			PricingRepo: pricing.NewStore(pool),
 			Logger:      logger,
 			Now:         time.Now,
 		}),

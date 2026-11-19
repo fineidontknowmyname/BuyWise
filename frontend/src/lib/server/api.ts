@@ -3,6 +3,93 @@ export type Provenance = 'stub' | 'fixture' | 'manual' | 'calculated';
 export type Goal = {
 	id: string;
 	name: string;
+	targetPricePaise?: number;
+	savedAmountPaise?: number;
+	targetDate?: string | null;
+	priority?: 'high' | 'medium' | 'low';
+	productId?: string | null;
+	status?: 'active' | 'paused' | 'completed' | 'cancelled';
+	createdAt: string;
+};
+
+export type Product = {
+	id: string;
+	name: string;
+	brand: string;
+	model: string;
+	variant?: string;
+	category: string;
+	description?: string;
+	currentPricePaise: number;
+	originalPricePaise?: number;
+	targetPricePaise: number;
+	discountPercent?: number;
+	currency?: string;
+	availability?: string;
+	specifications?: Record<string, string>;
+	url: string;
+	imageUrl: string;
+	retailer: string;
+	notes: string;
+	lastRetrievedAt?: string | null;
+	source?: string;
+	verificationStatus?: string;
+	warnings?: string[];
+	createdAt: string;
+	updatedAt: string;
+};
+
+export type PriceObservation = {
+	id: string;
+	productId: string;
+	goalId?: string | null;
+	pricePaise: number;
+	currency?: string;
+	priceType?: string;
+	observedOn: string;
+	retailer?: string;
+	source: string;
+	provenance: string;
+	sourceRef?: string;
+	notes?: string;
+	importBatchId?: string | null;
+	createdAt: string;
+};
+
+export type DocumentUpload = {
+	id: string;
+	goalId: string;
+	productId?: string | null;
+	filename: string;
+	fileType: string;
+	fileSize: number;
+	purpose: string;
+	status: 'pending' | 'previewed' | 'confirmed' | 'failed';
+	parsedData: Record<string, unknown>;
+	summary: Record<string, unknown>;
+	createdAt: string;
+	confirmedAt?: string | null;
+};
+
+export type ProductStats = {
+	productId: string;
+	currentPricePaise: number;
+	lowestPricePaise: number;
+	highestPricePaise: number;
+	averagePricePaise: number;
+	observationCount: number;
+	firstObservedOn: string;
+	lastObservedOn: string;
+};
+
+export type ImportBatch = {
+	id: string;
+	productId: string;
+	filename: string;
+	totalRows: number;
+	importedRows: number;
+	duplicateRows: number;
+	errorRows: number;
 	createdAt: string;
 };
 
@@ -37,6 +124,7 @@ export type Category = {
 	name: string;
 	kind: 'income' | 'expense';
 	committed: boolean;
+	archived?: boolean;
 };
 
 export type Transaction = {
@@ -76,7 +164,7 @@ export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; 
 
 const unreachable: ApiError = {
 	code: 'api_unreachable',
-	message: 'The Self-EMI API is not reachable. Is it running?'
+	message: 'The BuyWise API is not reachable. Is it running?'
 };
 
 export async function apiRequest<T>(

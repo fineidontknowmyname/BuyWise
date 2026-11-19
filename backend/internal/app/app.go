@@ -10,29 +10,54 @@ import (
 	"selfemi/internal/modules/goals"
 	"selfemi/internal/modules/pricing"
 	"selfemi/internal/platform/httpserver"
+	"selfemi/internal/platform/identity"
 )
 
 type Dependencies struct {
+	Identity    *identity.Handler
 	DB          httpserver.Pinger
 	GoalsRepo   goals.Repository
 	FinanceRepo finance.Repository
+	PricingRepo pricing.Repository
 	Logger      *slog.Logger
 	Now         func() time.Time
 }
 
-func NewHandler(deps Dependencies) http.Handler {
+func newDomainHandler(deps Dependencies) http.Handler {
+	pricingRepo := deps.PricingRepo
+	if pricingRepo == nil {
+		pricingRepo = pricing.NewStubRepository()
+	}
+
 	goalService := goals.NewService(deps.GoalsRepo, deps.Now)
 	financeService := finance.NewService(deps.FinanceRepo, deps.Now)
+	pricingService := pricing.NewService(pricingRepo, deps.Now)
+
 	decisionService := decision.NewService(
 		goalLookup{goals: goalService},
 		decision.StubEngine{},
 		deps.Now,
 		finance.StubStateSource{},
-		pricing.NewDecisionInputs(pricing.StubPriceData{}, pricing.StubForecast{}, deps.Now),
+		pricing.NewDecisionInputs(pricingService, pricing.StubForecast{}, deps.Now),
 	)
 	return httpserver.NewRouter(deps.DB,
 		goals.NewHandler(goalService, deps.Logger),
 		finance.NewHandler(financeService, deps.Logger),
+		pricing.NewHandler(pricingService, deps.Logger),
 		decision.NewHandler(decisionService, deps.Logger),
 	)
+}
+
+func NewHandler(deps Dependencies) http.Handler {
+	if deps.Identity == nil {
+		panic("identity handler is required")
+	}
+	domain := newDomainHandler(deps)
+	mux := http.NewServeMux()
+	deps.Identity.Register(mux)
+	public := httpserver.NewRouter(deps.DB)
+	mux.Handle("GET /healthz", public)
+	mux.Handle("GET /readyz", public)
+	mux.Handle("/", deps.Identity.Protect(domain))
+	return mux
 }

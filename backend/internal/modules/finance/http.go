@@ -26,9 +26,15 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /accounts/{id}/transactions", h.listTransactions)
 	mux.HandleFunc("POST /categories", h.createCategory)
 	mux.HandleFunc("GET /categories", h.listCategories)
+	mux.HandleFunc("GET /categories/{id}", h.getCategory)
+	mux.HandleFunc("PUT /categories/{id}", h.updateCategory)
+	mux.HandleFunc("PATCH /categories/{id}", h.updateCategory)
+	mux.HandleFunc("DELETE /categories/{id}", h.deleteCategory)
+	mux.HandleFunc("GET /categories/{id}/transactions/count", h.categoryTransactionCount)
 	mux.HandleFunc("POST /transactions", h.createTransaction)
 	mux.HandleFunc("POST /transactions/{id}/void", h.voidTransaction)
 	mux.HandleFunc("PUT /budgets/{id}", h.setBudget)
+	mux.HandleFunc("DELETE /budgets/{id}", h.deleteBudget)
 	mux.HandleFunc("GET /budgets", h.budgetReport)
 }
 
@@ -45,6 +51,7 @@ type categoryResponse struct {
 	Name      string `json:"name"`
 	Kind      Kind   `json:"kind"`
 	Committed bool   `json:"committed"`
+	Archived  bool   `json:"archived"`
 }
 
 type transactionResponse struct {
@@ -69,7 +76,7 @@ func toAccountResponse(a AccountSummary) accountResponse {
 }
 
 func toCategoryResponse(c Category) categoryResponse {
-	return categoryResponse{ID: c.ID.String(), Name: c.Name, Kind: c.Kind, Committed: c.Committed}
+	return categoryResponse{ID: c.ID.String(), Name: c.Name, Kind: c.Kind, Committed: c.Committed, Archived: c.Archived}
 }
 
 func toTransactionResponse(t Transaction) transactionResponse {
@@ -107,6 +114,7 @@ var problems = map[error]apiProblem{
 	ErrDuplicateName:       {http.StatusConflict, "duplicate_name", "That name is already used."},
 	ErrAlreadyVoided:       {http.StatusConflict, "already_voided", "That transaction is already void."},
 	ErrKeyConflict:         {http.StatusConflict, "idempotency_conflict", "That idempotency key was already used for a different transaction."},
+	ErrCategoryInUse:       {http.StatusConflict, "category_in_use", "Cannot delete category referenced by existing transactions; archive it instead."},
 }
 
 func (h *Handler) fail(w http.ResponseWriter, action string, err error) {
@@ -224,6 +232,67 @@ func (h *Handler) listCategories(w http.ResponseWriter, r *http.Request) {
 	httpjson.Write(w, http.StatusOK, out)
 }
 
+func (h *Handler) getCategory(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.pathID(w, r, ErrCategoryNotFound)
+	if !ok {
+		return
+	}
+	category, err := h.service.GetCategory(r.Context(), id)
+	if err != nil {
+		h.fail(w, "get category", err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, toCategoryResponse(category))
+}
+
+func (h *Handler) updateCategory(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.pathID(w, r, ErrCategoryNotFound)
+	if !ok {
+		return
+	}
+	var req struct {
+		Name      string `json:"name"`
+		Kind      Kind   `json:"kind"`
+		Committed bool   `json:"committed"`
+		Archived  bool   `json:"archived"`
+	}
+	if err := httpjson.Decode(w, r, &req); err != nil {
+		h.badBody(w)
+		return
+	}
+	category, err := h.service.UpdateCategory(r.Context(), id, req.Name, req.Kind, req.Committed, req.Archived)
+	if err != nil {
+		h.fail(w, "update category", err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, toCategoryResponse(category))
+}
+
+func (h *Handler) deleteCategory(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.pathID(w, r, ErrCategoryNotFound)
+	if !ok {
+		return
+	}
+	if err := h.service.DeleteCategory(r.Context(), id); err != nil {
+		h.fail(w, "delete category", err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, map[string]any{"deleted": true})
+}
+
+func (h *Handler) categoryTransactionCount(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.pathID(w, r, ErrCategoryNotFound)
+	if !ok {
+		return
+	}
+	count, err := h.service.CategoryTransactionCount(r.Context(), id)
+	if err != nil {
+		h.fail(w, "count category transactions", err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, map[string]any{"count": count})
+}
+
 func (h *Handler) createTransaction(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AccountID   string `json:"accountId"`
@@ -323,6 +392,18 @@ func (h *Handler) setBudget(w http.ResponseWriter, r *http.Request) {
 		"limitPaise": budget.LimitPaise,
 		"updatedAt":  budget.UpdatedAt,
 	})
+}
+
+func (h *Handler) deleteBudget(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.pathID(w, r, ErrCategoryNotFound)
+	if !ok {
+		return
+	}
+	if err := h.service.DeleteBudget(r.Context(), id); err != nil {
+		h.fail(w, "delete budget", err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
 func (h *Handler) budgetReport(w http.ResponseWriter, r *http.Request) {

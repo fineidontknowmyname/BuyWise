@@ -1,0 +1,40 @@
+import { error, redirect } from '@sveltejs/kit';
+import type { Handle, HandleFetch } from '@sveltejs/kit/hooks';
+import { apiRequest } from '#lib/server/api.js';
+import { apiUrl } from '#lib/server/config.js';
+
+export const sessionCookie = 'buywise_session';
+
+export const handleFetch: HandleFetch = ({ event, request, fetch }) => {
+	const base = apiUrl().replace(/\/$/, '');
+	const token = event.cookies.get(sessionCookie);
+	if (token && request.url.startsWith(base + '/')) {
+		const headers = new Headers(request.headers);
+		headers.set('Authorization', 'Bearer ' + token);
+		request = new Request(request, { headers, redirect: 'error' });
+	}
+	return fetch(request);
+};
+
+export const handle: Handle = async ({ event, resolve }) => {
+	const path = event.url.pathname;
+	if (!['GET', 'HEAD', 'OPTIONS'].includes(event.request.method)) {
+		if (event.request.headers.get('origin') !== event.url.origin) {
+			error(403, 'Invalid request origin.');
+		}
+	}
+	if (path === '/sign-in' || path === '/sign-out' || path === '/health') return resolve(event);
+	if (event.cookies.get(sessionCookie)) {
+		const session = await apiRequest(event.fetch, apiUrl(), '/auth/session');
+		if (session.ok) {
+			const response = await resolve(event);
+			const headers = new Headers(response.headers);
+			headers.set('Cache-Control', 'private, no-store');
+			return new Response(response.body, { status: response.status, headers });
+		}
+		if (session.status !== 401) error(503, 'BuyWise is temporarily unavailable.');
+		event.cookies.delete(sessionCookie, { path: '/' });
+	}
+	if (path.startsWith('/api/')) error(401, 'Sign in to continue.');
+	redirect(303, '/sign-in');
+};

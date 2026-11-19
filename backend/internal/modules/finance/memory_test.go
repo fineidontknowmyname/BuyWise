@@ -91,6 +91,59 @@ func (m *memoryRepo) GetCategory(_ context.Context, id uuid.UUID) (Category, err
 	return Category{}, ErrCategoryNotFound
 }
 
+func (m *memoryRepo) UpdateCategory(_ context.Context, category Category) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, c := range m.categories {
+		if c.ID != category.ID && c.Kind == category.Kind && strings.EqualFold(c.Name, category.Name) {
+			return ErrDuplicateName
+		}
+	}
+	for i, c := range m.categories {
+		if c.ID == category.ID {
+			m.categories[i] = category
+			return nil
+		}
+	}
+	return ErrCategoryNotFound
+}
+
+func (m *memoryRepo) DeleteCategory(_ context.Context, id uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, c := range m.categories {
+		if c.ID == id {
+			m.categories = append(m.categories[:i], m.categories[i+1:]...)
+			return nil
+		}
+	}
+	return ErrCategoryNotFound
+}
+
+func (m *memoryRepo) CategoryTransactionCount(_ context.Context, id uuid.UUID) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var count int64
+	for _, t := range m.transactions {
+		if t.CategoryID == id {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (m *memoryRepo) DeleteBudget(_ context.Context, categoryID uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, b := range m.budgets {
+		if b.CategoryID == categoryID {
+			m.budgets = append(m.budgets[:i], m.budgets[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
 func (m *memoryRepo) CreateTransaction(_ context.Context, tx Transaction) (Transaction, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

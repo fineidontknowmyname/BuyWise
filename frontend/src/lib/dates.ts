@@ -8,3 +8,7 @@ export function todayInIndia(now: Date = new Date()): string {
 		day: '2-digit'
 	}).format(now);
 }
+
+export function currentMonth(now: Date = new Date()): string {
+	return todayInIndia(now).slice(0, 7);
+}

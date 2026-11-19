@@ -36,6 +36,7 @@ var (
 	ErrDuplicateName       = errors.New("that name is already used")
 	ErrAlreadyVoided       = errors.New("transaction is already void")
 	ErrKeyConflict         = errors.New("idempotency key was already used for a different transaction")
+	ErrCategoryInUse       = errors.New("cannot delete category referenced by transactions; archive it instead")
 )
 
 type Kind string
@@ -66,6 +67,7 @@ type Category struct {
 	Name      string
 	Kind      Kind
 	Committed bool
+	Archived  bool
 }
 
 type Transaction struct {

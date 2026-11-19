@@ -16,9 +16,15 @@ var (
 )
 
 type Goal struct {
-	ID        uuid.UUID
-	Name      string
-	CreatedAt time.Time
+	ID               uuid.UUID  `json:"id"`
+	Name             string     `json:"name"`
+	TargetPricePaise int64      `json:"targetPricePaise"`
+	SavedAmountPaise int64      `json:"savedAmountPaise"`
+	TargetDate       *string    `json:"targetDate,omitempty"`
+	Priority         string     `json:"priority"`
+	ProductID        *uuid.UUID `json:"productId,omitempty"`
+	Status           string     `json:"status"`
+	CreatedAt        time.Time  `json:"createdAt"`
 }
 
 func NormalizeName(name string) (string, error) {

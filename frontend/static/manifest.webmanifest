@@ -1,0 +1,18 @@
+{
+	"name": "BuyWise — Personal Finance & Purchase Planning",
+	"short_name": "BuyWise",
+	"description": "Plan smarter. Buy wiser. AI-powered personal finance and purchase affordability manager.",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#0B1220",
+	"theme_color": "#168BDB",
+	"orientation": "portrait-primary",
+	"icons": [
+		{
+			"src": "/favicon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any maskable"
+		}
+	]
+}

@@ -45,6 +45,18 @@ func (m *memoryRepo) List(context.Context) ([]goals.Goal, error) {
 	return append([]goals.Goal{}, m.items...), nil
 }
 
+func (m *memoryRepo) Update(_ context.Context, goal goals.Goal) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, g := range m.items {
+		if g.ID == goal.ID {
+			m.items[i] = goal
+			return nil
+		}
+	}
+	return goals.ErrNotFound
+}
+
 type upDB struct{}
 
 func (upDB) Ping(context.Context) error { return nil }
@@ -52,7 +64,7 @@ func (upDB) Ping(context.Context) error { return nil }
 var fixedNow = time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
 
 func newTestHandler() http.Handler {
-	return NewHandler(Dependencies{
+	return newDomainHandler(Dependencies{
 		DB:        upDB{},
 		GoalsRepo: &memoryRepo{},
 		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),

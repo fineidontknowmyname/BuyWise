@@ -1,2 +1,8 @@
-Docs/
+﻿Docs/
 CLAUDE.md
+reverse-engineering/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example

@@ -17,8 +17,8 @@ if (migration.status !== 0) {
 }
 
 const children = [
-	spawn('go', ['run', './cmd/api'], { cwd: backendDir, stdio: 'inherit', shell: useShell }),
-	spawn('pnpm', ['dev'], { cwd: frontendDir, stdio: 'inherit', shell: useShell })
+	spawn('go', ['run', './cmd/api'], { cwd: backendDir, stdio: 'inherit', shell: useShell, env: process.env }),
+	spawn('pnpm', ['dev'], { cwd: frontendDir, stdio: 'inherit', shell: useShell, env: process.env })
 ];
 
 let stopping = false;

@@ -43,8 +43,13 @@ type BudgetReport struct {
 
 type BudgetRepository interface {
 	UpsertBudget(ctx context.Context, budget Budget) error
+	DeleteBudget(ctx context.Context, categoryID uuid.UUID) error
 	ListBudgets(ctx context.Context) ([]Budget, error)
 	SpentByCategory(ctx context.Context, fromInclusive, toExclusive time.Time) (map[uuid.UUID]int64, error)
+}
+
+func (s *Service) DeleteBudget(ctx context.Context, categoryID uuid.UUID) error {
+	return s.repo.DeleteBudget(ctx, categoryID)
 }
 
 func (s *Service) SetBudget(ctx context.Context, categoryID uuid.UUID, limitPaise int64) (Budget, error) {
