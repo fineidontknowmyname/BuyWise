@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import ProvenanceBadge from '#lib/ProvenanceBadge.svelte';
+	import { enhance } from '$app/forms';
+	import PurchaseReadiness from '#lib/components/PurchaseReadiness.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import PriceTimelineChart from '#lib/components/PriceTimelineChart.svelte';
 	import { formatRupees } from '#lib/money.js';
@@ -12,7 +13,6 @@
 		Clock,
 		AlertTriangle,
 		RefreshCw,
-		ShieldAlert,
 		Sparkles,
 		Tag,
 		ExternalLink,
@@ -29,33 +29,30 @@
 		ShieldCheck
 	} from '@lucide/svelte';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
+	let reassessing = $state(false);
 
 	const stateConfig = {
 		BUY: {
 			label: 'Buy',
-			desc: 'Affordability criteria met. Safe to proceed with this purchase.',
 			badgeClass: 'badge-success',
 			icon: CheckCircle2,
 			color: 'var(--success)'
 		},
 		WAIT: {
 			label: 'Wait',
-			desc: 'Hold on this purchase for now. Favorable purchase window or discount pending.',
 			badgeClass: 'badge-warning',
 			icon: Clock,
 			color: 'var(--warning)'
 		},
 		SAVE_MORE: {
 			label: 'Save more',
-			desc: 'Buffer capacity is below optimal threshold. Increase savings before purchasing.',
 			badgeClass: 'badge-primary',
 			icon: RefreshCw,
 			color: 'var(--primary)'
 		},
 		REASSESS: {
 			label: 'Reassess',
-			desc: 'Underlying financial commitments require review before proceeding.',
 			badgeClass: 'badge-warning',
 			icon: AlertTriangle,
 			color: 'var(--warning)'
@@ -65,6 +62,11 @@
 	const decision = $derived(data.decision);
 	const activeState = $derived(stateConfig[decision.state] ?? stateConfig.REASSESS);
 	const StateIcon = $derived(activeState.icon);
+	const decisionDate = new Intl.DateTimeFormat('en-IN', {
+		dateStyle: 'medium',
+		timeStyle: 'short',
+		timeZone: 'Asia/Kolkata'
+	});
 
 	// Modals
 	let showTargetPriceModal = $state(false);
@@ -257,42 +259,54 @@
 		{/if}
 	</div>
 
-	<!-- Decision Hero Banner (Section 9) -->
 	<div class="decision-hero card {activeState.badgeClass}">
 		<div class="hero-main">
 			<div class="hero-left">
 				<StateIcon size={36} class="state-icon" />
 				<div>
-					<span class="card-kicker">Deterministic Rules Engine</span>
+					<span class="card-kicker">Purchase decision</span>
 					<h2 class="hero-title">
 						Verdict:
 						<span class="hero-verdict" data-testid="decision-state">{activeState.label}</span>
 					</h2>
-					<p class="hero-desc">{activeState.desc}</p>
+					<p class="hero-desc">{decision.explanation}</p>
 				</div>
 			</div>
 			<div class="hero-right">
 				<div class="engine-badge">
-					<span>Rules engine v{decision.rulesVersion}</span>
+					<span>Rules {decision.rulesVersion}</span>
 				</div>
 				<div class="timestamp font-mono text-xs">
-					Evaluated {new Date(decision.decidedAt).toLocaleTimeString([], {
-						hour: '2-digit',
-						minute: '2-digit'
-					})}
+					Live assessment {decisionDate.format(new Date(decision.decidedAt))}
 				</div>
 			</div>
 		</div>
 
-		{#if decision.reasonCodes && decision.reasonCodes.length > 0}
-			<div class="reason-chips">
-				{#each decision.reasonCodes as code (code)}
-					<span class="reason-chip">
-						Rule: {code.replaceAll('_', ' ')}
-					</span>
-				{/each}
-			</div>
+		<form
+			class="reassess-form"
+			method="POST"
+			action="?/reassess"
+			use:enhance={() => {
+				reassessing = true;
+				return async ({ update }) => {
+					try {
+						await update();
+					} finally {
+						reassessing = false;
+					}
+				};
+			}}
+		>
+			<button class="btn btn-primary" disabled={reassessing}>
+				{reassessing ? 'Reassessing…' : 'Reassess and save'}
+			</button>
+		</form>
+		{#if form?.assessmentSaved}
+			<p role="status">Assessment saved to decision history.</p>
+		{:else if form?.assessmentError}
+			<p role="alert">{form.assessmentError}</p>
 		{/if}
+		<PurchaseReadiness {decision} history={data.decisionHistory} />
 	</div>
 
 	<!-- Section 3 & 4: Shared Product Profile Card -->
@@ -749,31 +763,6 @@
 			</div>
 		</div>
 	{/if}
-
-	<!-- Decision Engine Inputs (Preserving exact test IDs) -->
-	<div class="decision-inputs-section card mt-6">
-		<h3 class="card-title mb-3">Decision Engine Verified Inputs</h3>
-		{#if decision.inputs && decision.inputs.length > 0}
-			<div class="inputs-grid">
-				{#each decision.inputs as inp (inp.key)}
-					<div class="input-card">
-						<span class="input-lbl">{inp.label}</span>
-						<strong class="input-val font-mono tabular-nums">{inp.value}</strong>
-						<div class="input-prov">
-							<ProvenanceBadge provenance={inp.provenance} />
-						</div>
-					</div>
-				{/each}
-			</div>
-		{/if}
-
-		{#if !decision.allInputsReal}
-			<div class="stub-warning-box mt-4" data-testid="stub-warning">
-				<ShieldAlert size={16} class="text-warning" />
-				<span>Note: Some inputs rely on baseline rules or stub data pending verified history.</span>
-			</div>
-		{/if}
-	</div>
 </div>
 
 <!-- =========================================================================
@@ -1248,6 +1237,7 @@
 
 	.hero-main {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: flex-start;
 		gap: 20px;
@@ -1275,21 +1265,8 @@
 		font-size: 0.95rem;
 	}
 
-	.reason-chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
+	.reassess-form {
 		margin-top: 16px;
-		padding-top: 14px;
-		border-top: 1px solid var(--border-subtle);
-	}
-
-	.reason-chip {
-		background: var(--surface-secondary);
-		padding: 4px 10px;
-		border-radius: var(--radius-sm);
-		font-size: 0.75rem;
-		text-transform: capitalize;
 	}
 
 	/* Product Profile Card */
@@ -1635,38 +1612,6 @@
 		overflow-y: auto;
 		border: 1px solid var(--border-subtle);
 		border-radius: var(--radius-sm);
-	}
-
-	.inputs-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-		gap: 12px;
-	}
-
-	.input-card {
-		background: var(--surface-secondary);
-		padding: 12px;
-		border-radius: var(--radius-md);
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.input-lbl {
-		font-size: 0.75rem;
-		color: var(--foreground-secondary);
-	}
-
-	.input-val {
-		font-size: 1rem;
-	}
-
-	.stub-warning-box {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 0.8rem;
-		color: var(--warning);
 	}
 
 	.alert {

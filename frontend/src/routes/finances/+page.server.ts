@@ -15,6 +15,7 @@ type ProfileItem = {
 type Foundation = {
 	profile: {
 		revision: number;
+		debtStatus: string;
 		items: ProfileItem[];
 		variableIncomePercent: number;
 		bufferPercent: number;
@@ -94,6 +95,7 @@ export const actions: Actions = {
 			method: 'PUT',
 			body: JSON.stringify({
 				revision: Number(field(form, 'revision')),
+				debtStatus: field(form, 'debtStatus'),
 				items,
 				variableIncomePercent: Number(field(form, 'variableIncomePercent')),
 				bufferPercent: Number(field(form, 'bufferPercent')),

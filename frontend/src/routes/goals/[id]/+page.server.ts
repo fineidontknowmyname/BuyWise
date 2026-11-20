@@ -16,9 +16,10 @@ export const load: PageServerLoad = async ({ fetch, params }) => {
 	const base = apiUrl();
 	const goalId = params.id;
 
-	const [decisionRes, goalRes] = await Promise.all([
+	const [decisionRes, goalRes, historyRes] = await Promise.all([
 		apiRequest<Decision>(fetch, base, `/goals/${encodeURIComponent(goalId)}/decision`),
-		apiRequest<Goal>(fetch, base, `/goals/${encodeURIComponent(goalId)}`)
+		apiRequest<Goal>(fetch, base, `/goals/${encodeURIComponent(goalId)}`),
+		apiRequest<Decision[]>(fetch, base, `/goals/${encodeURIComponent(goalId)}/decision/history`)
 	]);
 
 	if (!decisionRes.ok) {
@@ -55,6 +56,7 @@ export const load: PageServerLoad = async ({ fetch, params }) => {
 
 	return {
 		decision: decisionRes.data,
+		decisionHistory: historyRes.ok ? historyRes.data : null,
 		goal,
 		product,
 		prices,
@@ -64,6 +66,17 @@ export const load: PageServerLoad = async ({ fetch, params }) => {
 };
 
 export const actions: Actions = {
+	reassess: async ({ params, fetch }) => {
+		const result = await apiRequest<Decision>(
+			fetch,
+			apiUrl(),
+			`/goals/${encodeURIComponent(params.id)}/decision`,
+			{ method: 'POST' }
+		);
+		return result.ok
+			? { assessmentSaved: true }
+			: fail(result.status, { assessmentError: result.error.message });
+	},
 	updateTargetPrice: async ({ params, request, fetch }) => {
 		const goalId = params.id;
 		const form = await request.formData();

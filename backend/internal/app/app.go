@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"selfemi/internal/modules/decision"
 	"selfemi/internal/modules/finance"
 	"selfemi/internal/modules/goals"
@@ -34,23 +35,25 @@ func newDomainHandler(deps Dependencies) http.Handler {
 	financeService := finance.NewService(deps.FinanceRepo, deps.Now)
 	pricingService := pricing.NewService(pricingRepo, deps.Now)
 
-	decisionService := decision.NewService(
-		goalLookup{goals: goalService},
-		decision.StubEngine{},
-		deps.Now,
-		finance.StubStateSource{},
-		pricing.NewDecisionInputs(pricingService, pricing.StubForecast{}, deps.Now),
-	)
+	goalsStore, goalsOK := deps.GoalsRepo.(*goals.Store)
+	financeStore, financeOK := deps.FinanceRepo.(*finance.Store)
+	pricingStore, pricingOK := pricingRepo.(*pricing.Store)
+	pool, poolOK := deps.DB.(*pgxpool.Pool)
+	var source decision.InputProvider
+	var history *decision.Store
+	if goalsOK && financeOK && pricingOK && poolOK {
+		source = purchaseInputs{financeStore, goalsStore, pricingStore}
+		history = decision.NewStore(pool)
+	}
+	decisionService := decision.NewService(goalLookup{goals: goalService}, source, history, deps.Now)
 	modules := []httpserver.Module{
 		goals.NewHandler(goalService, deps.Logger),
 		finance.NewHandler(financeService, deps.Logger),
 		pricing.NewHandler(pricingService, deps.Logger, deps.PriceProvider),
 		decision.NewHandler(decisionService, deps.Logger),
 	}
-	if goalsStore, ok := deps.GoalsRepo.(*goals.Store); ok {
-		if financeStore, ok := deps.FinanceRepo.(*finance.Store); ok {
-			modules = append(modules, goals.NewPlanner(goalsStore, planningFinance{financeStore}, deps.Logger, deps.Now))
-		}
+	if goalsOK && financeOK {
+		modules = append(modules, goals.NewPlanner(goalsStore, planningFinance{financeStore}, deps.Logger, deps.Now))
 	}
 	return httpserver.NewRouter(deps.DB, modules...)
 

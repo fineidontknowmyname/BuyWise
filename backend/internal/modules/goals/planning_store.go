@@ -107,6 +107,33 @@ func (s *Store) reservations(ctx context.Context) (map[string]int64, error) {
 	return result, rows.Err()
 }
 
+type AccountReservations struct {
+	ForGoal    int64
+	OtherGoals int64
+}
+
+func (s *Store) PurchaseReservations(ctx context.Context, id uuid.UUID) (map[string]AccountReservations, error) {
+	rows, err := database.Scoped(ctx, s.pool).Query(ctx, `SELECT f.account_id::text,
+        COALESCE(SUM(f.amount_paise) FILTER (WHERE f.goal_id = $1::uuid), 0)::bigint,
+        COALESCE(SUM(f.amount_paise) FILTER (WHERE f.goal_id <> $1::uuid), 0)::bigint
+        FROM goals.funding f JOIN goals.goals g ON g.id = f.goal_id
+        WHERE g.status IN ('active', 'paused') GROUP BY f.account_id`, id.String())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]AccountReservations{}
+	for rows.Next() {
+		var account string
+		var item AccountReservations
+		if err := rows.Scan(&account, &item.ForGoal, &item.OtherGoals); err != nil {
+			return nil, err
+		}
+		result[account] = item
+	}
+	return result, rows.Err()
+}
+
 func (s *Store) priorFunding(ctx context.Context, id uuid.UUID, input fundingInput) (bool, error) {
 	var goalID, accountID string
 	var amount int64

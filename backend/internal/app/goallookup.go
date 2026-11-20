@@ -21,5 +21,5 @@ func (l goalLookup) Goal(ctx context.Context, id uuid.UUID) (decision.GoalRef, e
 	if err != nil {
 		return decision.GoalRef{}, err
 	}
-	return decision.GoalRef{ID: goal.ID, Name: goal.Name}, nil
+	return decision.GoalRef{ID: goal.ID, Name: goal.Name, Status: goal.Status, ProductID: goal.ProductID, TargetPaise: goal.TargetPricePaise}, nil
 }

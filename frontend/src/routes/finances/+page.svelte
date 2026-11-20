@@ -140,6 +140,14 @@
 			>
 			{#key profile.revision}
 				<div class="form-grid">
+					<label>
+						Debt repayment status
+						<select name="debtStatus" value={profile.debtStatus}>
+							<option value="">Unconfirmed or no debt recorded</option>
+							<option value="current">All repayments current</option>
+							<option value="overdue">Repayment overdue</option>
+						</select>
+					</label>
 					<label
 						>Variable income counted (%)<input
 							name="variableIncomePercent"

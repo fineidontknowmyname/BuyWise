@@ -24,6 +24,7 @@ type profileItem struct {
 }
 
 type financialProfile struct {
+	DebtStatus            string        `json:"debtStatus"`
 	Revision              int           `json:"revision"`
 	Items                 []profileItem `json:"items"`
 	VariableIncomePercent int64         `json:"variableIncomePercent"`
@@ -48,6 +49,11 @@ func defaultProfile() financialProfile {
 }
 
 func (p *financialProfile) validate() bool {
+	switch p.DebtStatus {
+	case "", "current", "overdue":
+	default:
+		return false
+	}
 	if p.Revision < 0 || p.Revision >= 2147483647 || p.Items == nil || len(p.Items) > 100 ||
 		p.VariableIncomePercent < 0 || p.VariableIncomePercent > 100 ||
 		p.BufferPercent < 0 || p.BufferPercent > 100 ||

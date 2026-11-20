@@ -22,10 +22,10 @@ const accountSummarySelect = `SELECT a.id::text, a.name, a.opening_balance_paise
 	a.opening_balance_paise + COALESCE(SUM(
 		CASE t.kind WHEN 'income' THEN t.amount_paise WHEN 'expense' THEN -t.amount_paise END
 	), 0)::bigint
-    + COALESCE((SELECT SUM(amount_paise) FROM finance.transfers WHERE to_account_id = a.id), 0)::bigint
-    - COALESCE((SELECT SUM(amount_paise) FROM finance.transfers WHERE from_account_id = a.id), 0)::bigint
+    + COALESCE((SELECT SUM(amount_paise) FROM finance.transfers WHERE to_account_id = a.id AND ($1::date IS NULL OR occurred_on <= $1::date)), 0)::bigint
+    - COALESCE((SELECT SUM(amount_paise) FROM finance.transfers WHERE from_account_id = a.id AND ($1::date IS NULL OR occurred_on <= $1::date)), 0)::bigint
 FROM finance.accounts a
-LEFT JOIN finance.transactions t ON t.account_id = a.id AND t.voided_at IS NULL`
+LEFT JOIN finance.transactions t ON t.account_id = a.id AND t.voided_at IS NULL AND ($1::date IS NULL OR t.occurred_on <= $1::date)`
 
 type Store struct {
 	pool *pgxpool.Pool
@@ -41,6 +41,9 @@ func isUniqueViolation(err error) bool {
 }
 
 func (s *Store) CreateAccount(ctx context.Context, account Account) error {
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return err
+	}
 	_, err := database.Scoped(ctx, s.pool).Exec(ctx,
 		`INSERT INTO finance.accounts (id, name, opening_balance_paise, created_at) VALUES ($1::uuid, $2, $3, $4)`,
 		account.ID.String(), account.Name, account.OpeningBalancePaise, account.CreatedAt)
@@ -54,7 +57,11 @@ func (s *Store) CreateAccount(ctx context.Context, account Account) error {
 }
 
 func (s *Store) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
-	rows, err := database.Scoped(ctx, s.pool).Query(ctx, accountSummarySelect+` GROUP BY a.id ORDER BY a.id`)
+	return s.accountSummaries(ctx, nil)
+}
+
+func (s *Store) accountSummaries(ctx context.Context, day *string) ([]AccountSummary, error) {
+	rows, err := database.Scoped(ctx, s.pool).Query(ctx, accountSummarySelect+` GROUP BY a.id ORDER BY a.id`, day)
 	if err != nil {
 		return nil, fmt.Errorf("list accounts: %w", err)
 	}
@@ -75,7 +82,7 @@ func (s *Store) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
 }
 
 func (s *Store) GetAccount(ctx context.Context, id uuid.UUID) (AccountSummary, error) {
-	row := database.Scoped(ctx, s.pool).QueryRow(ctx, accountSummarySelect+` WHERE a.id = $1::uuid GROUP BY a.id`, id.String())
+	row := database.Scoped(ctx, s.pool).QueryRow(ctx, accountSummarySelect+` WHERE a.id = $2::uuid GROUP BY a.id`, nil, id.String())
 	summary, err := scanAccountSummary(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AccountSummary{}, ErrAccountNotFound

@@ -219,6 +219,43 @@ func TestIdentityIsolation(t *testing.T) {
 	assertJSON(request("GET", offerPath+"/"+offerA+"/history", first, "", 200), "count", "1")
 	request("PUT", "/goals/"+id, first, `{"name":"First account only","targetPricePaise":9000000,"priority":"medium","productId":"`+variant+`"}`, 200)
 	assertJSON(request("GET", "/goals/"+id, first, "", 200), "productId", `"`+variant+`"`)
+	decisionPath := "/goals/" + id + "/decision"
+	request("GET", decisionPath, "", "", 401)
+	request("GET", decisionPath, second, "", 404)
+	request("POST", decisionPath, second, "", 404)
+	request("GET", decisionPath+"/history", second, "", 404)
+	if got := request("GET", decisionPath, first, "", 200); !strings.Contains(string(got), "observation_stale") {
+		t.Fatalf("stale observations did not qualify the decision: %s", got)
+	}
+	today := time.Now().In(time.FixedZone("IST", 19800)).Format(time.DateOnly)
+	current := `{"observedOn":"` + today + `","itemPaise":90000,"taxPaise":0,"deliveryPaise":5000,"discountPaise":0,"availability":"in_stock","sourceLabel":"Checkout quote"}`
+	request("POST", offerPath+"/"+offerA+"/observations", first, current, 201)
+	if got := request("GET", decisionPath, first, "", 200); !strings.Contains(string(got), "debt_unconfirmed") {
+		t.Fatalf("debt qualification missing: %s", got)
+	}
+	confirmedProfile := strings.Replace(profile, `"revision":0`, `"revision":1,"debtStatus":"current"`, 1)
+	request("PUT", "/financial-profile", first, confirmedProfile, 200)
+	cash := field(request("POST", "/accounts", first, `{"name":"Purchase cash","openingBalancePaise":1800000}`, 201), "id")
+	request("POST", "/transfers", first, `{"fromAccountId":"`+cash+`","toAccountId":"`+firstAccount+`","amountPaise":1000000,"occurredOn":"`+today+`","idempotencyKey":"decision-reserve"}`, 201)
+	assertJSON(request("GET", decisionPath, first, "", 200), "state", `"SAVE_MORE"`)
+	request("POST", "/goals/"+id+"/contributions", first, `{"accountId":"`+cash+`","amountPaise":130000,"idempotencyKey":"decision-funding"}`, 204)
+	assertJSON(request("GET", decisionPath, first, "", 200), "state", `"BUY"`)
+	if got := string(request("GET", decisionPath+"/history", first, "", 200)); strings.TrimSpace(got) != "[]" {
+		t.Fatalf("read-only preview wrote history: %s", got)
+	}
+	snapshot := request("POST", decisionPath, first, "", 201)
+	assertJSON(snapshot, "state", `"BUY"`)
+	assertJSON(snapshot, "checkoutPaise", "95000")
+	assertJSON(snapshot, "backedGoalPaise", "130000")
+	assertJSON(snapshot, "emergencyBalancePaise", "1000000")
+	assertJSON(snapshot, "trigger", `"user_reassessment"`)
+	snapshotID := field(snapshot, "id")
+	request("POST", offerPath+"/"+offerA+"/observations", first, strings.Replace(current, "90000", "105000", 1), 201)
+	assertJSON(request("GET", decisionPath, first, "", 200), "state", `"WAIT"`)
+	if got := request("GET", decisionPath+"/history", first, "", 200); !strings.Contains(string(got), snapshotID) ||
+		!strings.Contains(string(got), `"state":"BUY"`) {
+		t.Fatalf("stored snapshot changed after a new observation: %s", got)
+	}
 	provider := testOfferProvider(func(context.Context, pricing.ProviderListing) (pricing.ObservedOfferPrice, error) {
 		return pricing.ObservedOfferPrice{}, pricing.ErrProviderRateLimited
 	})
@@ -238,7 +275,7 @@ func TestIdentityIsolation(t *testing.T) {
 	}
 	history = request("GET", offerPath+"/"+offerA+"/history", first, "", 200)
 	assertJSON(history, "errorCode", `"provider_rate_limited"`)
-	assertJSON(history, "count", "1")
+	assertJSON(history, "count", "3")
 	if _, err := pool.Exec(ctx, `UPDATE pricing.offer_refresh_jobs SET state = 'running', lease_token = uuidv7(),
         lease_until = now() - interval '1 second' WHERE id = $1::uuid`, job); err != nil {
 		t.Fatal(err)
@@ -259,7 +296,7 @@ func TestIdentityIsolation(t *testing.T) {
 	assertJSON(history, "state", `"succeeded"`)
 	assertJSON(history, "attempts", "2")
 	assertJSON(history, "source", `"provider"`)
-	assertJSON(history, "count", "2")
+	assertJSON(history, "count", "4")
 	request("POST", "/auth/logout", first, "", 200)
 	request("GET", "/goals", first, "", 401)
 	retried := field(request("POST", "/auth/login", "", a, 200), "token")

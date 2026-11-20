@@ -4,11 +4,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"time"
 	"uuid"
 
 	"selfemi/internal/platform/httpjson"
-	"selfemi/internal/platform/provenance"
 )
 
 type Handler struct {
@@ -20,45 +18,53 @@ func NewHandler(service *Service, logger *slog.Logger) *Handler {
 	return &Handler{service: service, logger: logger}
 }
 
-type decisionResponse struct {
-	GoalID        string                `json:"goalId"`
-	GoalName      string                `json:"goalName"`
-	State         State                 `json:"state"`
-	ReasonCodes   []string              `json:"reasonCodes"`
-	Inputs        []provenance.Labelled `json:"inputs"`
-	RulesVersion  string                `json:"rulesVersion"`
-	DecidedAt     time.Time             `json:"decidedAt"`
-	AllInputsReal bool                  `json:"allInputsReal"`
-}
-
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /goals/{id}/decision", h.evaluate)
+	mux.HandleFunc("POST /goals/{id}/decision", h.evaluate)
+	mux.HandleFunc("GET /goals/{id}/decision/history", h.history)
 }
 
 func (h *Handler) evaluate(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		httpjson.WriteError(w, http.StatusNotFound, "goal_not_found", "No goal with that ID.")
+		h.fail(w, ErrGoalNotFound)
 		return
 	}
-	d, err := h.service.Evaluate(r.Context(), id)
-	if errors.Is(err, ErrGoalNotFound) {
-		httpjson.WriteError(w, http.StatusNotFound, "goal_not_found", "No goal with that ID.")
-		return
-	}
+	save := r.Method == http.MethodPost
+	value, err := h.service.Evaluate(r.Context(), id, save)
 	if err != nil {
-		h.logger.Error("evaluate decision failed", "error", err)
-		httpjson.WriteError(w, http.StatusInternalServerError, "internal_error", "Something went wrong.")
+		h.fail(w, err)
 		return
 	}
-	httpjson.Write(w, http.StatusOK, decisionResponse{
-		GoalID:        d.GoalID.String(),
-		GoalName:      d.GoalName,
-		State:         d.State,
-		ReasonCodes:   d.ReasonCodes,
-		Inputs:        d.Inputs,
-		RulesVersion:  d.RulesVersion,
-		DecidedAt:     d.DecidedAt,
-		AllInputsReal: d.AllInputsReal(),
-	})
+	status := http.StatusOK
+	if save {
+		status = http.StatusCreated
+	}
+	httpjson.Write(w, status, value)
+}
+
+func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		h.fail(w, ErrGoalNotFound)
+		return
+	}
+	values, err := h.service.History(r.Context(), id)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, values)
+}
+
+func (h *Handler) fail(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrGoalNotFound):
+		httpjson.WriteError(w, 404, "goal_not_found", "No goal with that ID.")
+	case errors.Is(err, ErrHistoryUnavailable):
+		httpjson.WriteError(w, 503, "decision_history_unavailable", "Decision history is temporarily unavailable.")
+	default:
+		h.logger.Error("purchase decision request failed", "error", err)
+		httpjson.WriteError(w, 500, "internal_error", "Something went wrong.")
+	}
 }

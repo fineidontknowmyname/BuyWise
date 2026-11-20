@@ -93,22 +93,59 @@ export type ImportBatch = {
 	createdAt: string;
 };
 
-export type DecisionInput = {
-	key: string;
-	label: string;
-	value: string;
-	provenance: Provenance;
-};
-
 export type Decision = {
+	id?: string;
 	goalId: string;
 	goalName: string;
 	state: 'BUY' | 'WAIT' | 'SAVE_MORE' | 'REASSESS';
 	reasonCodes: string[];
-	inputs: DecisionInput[];
 	rulesVersion: string;
 	decidedAt: string;
-	allInputsReal: boolean;
+	finance: { state: 'READY' | 'NOT_READY' | 'UNKNOWN'; reasonCodes: string[] };
+	price: { state: 'ATTRACTIVE' | 'NOT_ATTRACTIVE' | 'UNKNOWN'; reasonCodes: string[] };
+	goalTargetPaise: number;
+	checkoutPaise: number | null;
+	backedGoalPaise: number;
+	emergencyBalancePaise: number;
+	afterPurchasePaise: number | null;
+	selectedOffer: {
+		offerId: string;
+		observationId: string;
+		retailer: string;
+		seller: string;
+		source: string;
+		sourceLabel: string;
+		observedOn: string;
+		observedAt: string | null;
+		availability: string;
+		itemPaise: number | null;
+		taxPaise: number | null;
+		deliveryPaise: number | null;
+		discountPaise: number | null;
+		historyIds: string[] | null;
+		historyLowPaise: number;
+		historySumPaise: number;
+	} | null;
+	evidence: {
+		finances: {
+			profileRevision: number;
+			debtStatus: string;
+			monthlyMarginPaise: number;
+			emergencyTargetPaise: number;
+			operatingBufferPaise: number;
+		};
+		prices: {
+			productId: string;
+			variant: string;
+			idealPaise: number | null;
+			goodPaise: number | null;
+			maximumPaise: number | null;
+		};
+	};
+	reasons: { code: string; message: string }[];
+	explanation: string;
+	nextSteps: string[];
+	assumptions: string[];
 };
 
 export type Account = {
