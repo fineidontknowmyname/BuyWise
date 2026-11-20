@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import { formatRupees } from '#lib/money.js';
 	import { SvelteMap } from 'svelte/reactivity';
 	import Modal from '#lib/components/Modal.svelte';
@@ -13,9 +14,7 @@
 		Archive,
 		RotateCcw,
 		Edit3,
-		Trash2,
-		Check,
-		X
+		Trash2
 	} from '@lucide/svelte';
 
 	let { data, form }: PageProps = $props();
@@ -41,8 +40,9 @@
 	let editName = $state('');
 	let editType = $state<'discretionary' | 'committed' | 'income'>('discretionary');
 
-	// Inline budget editing state: map of categoryId -> { editing: boolean, val: string, saving: boolean }
-	let inlineEditing = $state<Record<string, { active: boolean; val: string; saving: boolean }>>({});
+	let editLimit = $state('');
+	let editSaving = $state(false);
+	let editError = $state('');
 
 	// Quick helper to categorize a Category
 	function getCategoryType(cat: Category): 'discretionary' | 'committed' | 'income' {
@@ -129,6 +129,9 @@
 		targetCategory = cat;
 		editName = cat.name;
 		editType = getCategoryType(cat);
+		const limit = budgetLineMap.get(cat.id)?.limitPaise;
+		editLimit = limit ? String(limit / 100) : '';
+		editError = '';
 		showEditModal = true;
 	}
 
@@ -140,41 +143,6 @@
 	function openDeleteConfirm(cat: Category) {
 		targetCategory = cat;
 		showDeleteModal = true;
-	}
-
-	function startInlineEdit(cat: Category, currentLimitPaise: number | undefined) {
-		inlineEditing[cat.id] = {
-			active: true,
-			val: currentLimitPaise && currentLimitPaise > 0 ? (currentLimitPaise / 100).toString() : '',
-			saving: false
-		};
-	}
-
-	async function saveInlineBudget(cat: Category) {
-		const state = inlineEditing[cat.id];
-		if (!state) return;
-
-		state.saving = true;
-		const formData = new FormData();
-		formData.append('categoryId', cat.id);
-		formData.append('limit', state.val.trim());
-
-		try {
-			const res = await fetch('?/setBudget', {
-				method: 'POST',
-				body: formData
-			});
-			if (res.ok) {
-				state.active = false;
-				window.location.reload();
-			}
-		} finally {
-			state.saving = false;
-		}
-	}
-
-	function cancelInlineEdit(catId: string) {
-		delete inlineEditing[catId];
 	}
 </script>
 
@@ -398,8 +366,7 @@
 						{@const hasLimit = limitPaise !== undefined && limitPaise > 0}
 						{@const remainingPaise = hasLimit ? limitPaise - spentPaise : null}
 						{@const pct = hasLimit ? Math.round((spentPaise / limitPaise) * 100) : null}
-						{@const isEditingInline = !!inlineEditing[cat.id]?.active}
-						{@const isSavingInline = !!inlineEditing[cat.id]?.saving}
+
 						{@const txCount = data.txCountMap?.[cat.id] || 0}
 
 						<tr class="category-row" class:row-archived={cat.archived}>
@@ -424,61 +391,24 @@
 								{/if}
 							</td>
 
-							<!-- Monthly Budget Allocation (Inline editable) -->
+							<!-- Monthly Budget Allocation -->
 							<td class="allocation-cell">
 								{#if catType === 'discretionary'}
-									{#if isEditingInline}
-										<div class="inline-edit-box">
-											<span class="rupee-prefix">₹</span>
-											<input
-												type="number"
-												step="0.01"
-												min="0"
-												placeholder="Limit (or clear)"
-												class="inline-input"
-												bind:value={inlineEditing[cat.id].val}
-												disabled={isSavingInline}
-												onkeydown={(e) => {
-													if (e.key === 'Enter') saveInlineBudget(cat);
-													if (e.key === 'Escape') cancelInlineEdit(cat.id);
-												}}
-											/>
-											<button
-												type="button"
-												class="inline-btn save"
-												title="Save limit"
-												onclick={() => saveInlineBudget(cat)}
-												disabled={isSavingInline}
-											>
-												<Check size={14} />
-											</button>
-											<button
-												type="button"
-												class="inline-btn cancel"
-												title="Cancel"
-												onclick={() => cancelInlineEdit(cat.id)}
-												disabled={isSavingInline}
-											>
-												<X size={14} />
-											</button>
-										</div>
-									{:else}
-										<div class="allocation-display">
-											{#if hasLimit}
-												<span class="tabular-nums font-semibold">{formatRupees(limitPaise)}</span>
-											{:else}
-												<span class="no-limit-text">No limit configured</span>
-											{/if}
-											<button
-												type="button"
-												class="inline-edit-trigger"
-												title="Edit monthly budget"
-												onclick={() => startInlineEdit(cat, limitPaise)}
-											>
-												<Edit3 size={13} />
-											</button>
-										</div>
-									{/if}
+									<div class="allocation-display">
+										{#if hasLimit}
+											<span class="tabular-nums font-semibold">{formatRupees(limitPaise)}</span>
+										{:else}
+											<span class="no-limit-text">No limit configured</span>
+										{/if}
+										<button
+											type="button"
+											class="inline-edit-trigger"
+											title="Edit monthly budget"
+											onclick={() => openEdit(cat)}
+										>
+											<Edit3 size={13} />
+										</button>
+									</div>
 								{:else if catType === 'committed'}
 									<span class="fixed-obligation-label">Fixed obligation</span>
 								{:else}
@@ -666,8 +596,41 @@
      Edit Category Modal
      ========================================================================== -->
 {#if targetCategory}
-	<Modal open={showEditModal} title="Edit Category" onclose={() => (showEditModal = false)}>
-		<form method="POST" action="?/updateCategory" class="modal-form">
+	<Modal
+		open={showEditModal}
+		title="Edit Category"
+		onclose={() => {
+			if (!editSaving) showEditModal = false;
+		}}
+	>
+		<form
+			method="POST"
+			action="?/updateCategory"
+			class="modal-form"
+			use:enhance={({ cancel }) => {
+				if (editSaving) {
+					cancel();
+					return;
+				}
+				editSaving = true;
+				editError = '';
+				return async ({ result, update }) => {
+					try {
+						if (result.type === 'success') {
+							await update();
+							showEditModal = false;
+						} else {
+							editError =
+								result.type === 'failure' && typeof result.data?.error === 'string'
+									? result.data.error
+									: 'Could not save the category. Please try again.';
+						}
+					} finally {
+						editSaving = false;
+					}
+				};
+			}}
+		>
 			<input type="hidden" name="id" value={targetCategory.id} />
 			<input type="hidden" name="archived" value={targetCategory.archived ? 'true' : 'false'} />
 
@@ -692,11 +655,38 @@
 				</select>
 			</div>
 
+			{#if editType === 'discretionary'}
+				<div class="form-group">
+					<label for="edit-cat-limit" class="label">Monthly budget (INR)</label>
+					<input
+						id="edit-cat-limit"
+						name="monthlyLimit"
+						class="input"
+						inputmode="decimal"
+						bind:value={editLimit}
+						disabled={!data.budgetReport || editSaving}
+						aria-describedby="edit-limit-help"
+					/>
+					<small id="edit-limit-help"
+						>{data.budgetReport
+							? 'Leave blank to remove the monthly limit.'
+							: 'Reload to edit the limit once budget data is available.'}</small
+					>
+				</div>
+			{/if}
+			{#if editError}<p role="alert" class="text-danger">{editError}</p>{/if}
 			<div class="modal-footer">
-				<button type="button" class="btn btn-secondary" onclick={() => (showEditModal = false)}>
+				<button
+					type="button"
+					class="btn btn-secondary"
+					onclick={() => (showEditModal = false)}
+					disabled={editSaving}
+				>
 					Cancel
 				</button>
-				<button type="submit" class="btn btn-primary"> Save Changes </button>
+				<button type="submit" class="btn btn-primary" disabled={editSaving}
+					>{editSaving ? 'Saving...' : 'Save Changes'}</button
+				>
 			</div>
 		</form>
 	</Modal>
@@ -1123,46 +1113,6 @@
 
 	.allocation-display:hover .inline-edit-trigger {
 		opacity: 1;
-	}
-
-	.inline-edit-box {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-	}
-
-	.rupee-prefix {
-		font-family: var(--font-mono);
-		color: var(--foreground-muted);
-	}
-
-	.inline-input {
-		width: 100px;
-		padding: 4px 8px;
-		border-radius: 6px;
-		border: 1px solid var(--primary);
-		font-family: var(--font-mono);
-		font-size: 0.85rem;
-		background-color: var(--surface);
-		color: var(--foreground);
-	}
-
-	.inline-btn {
-		padding: 4px 6px;
-		border-radius: 4px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.inline-btn.save {
-		background-color: var(--accent);
-		color: var(--accent-foreground);
-	}
-
-	.inline-btn.cancel {
-		background-color: var(--surface-secondary);
-		color: var(--foreground-secondary);
 	}
 
 	.fixed-obligation-label,

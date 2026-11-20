@@ -264,10 +264,11 @@ func (h *Handler) updateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name      string `json:"name"`
-		Kind      Kind   `json:"kind"`
-		Committed bool   `json:"committed"`
-		Archived  bool   `json:"archived"`
+		Name       string `json:"name"`
+		Kind       Kind   `json:"kind"`
+		Committed  bool   `json:"committed"`
+		Archived   bool   `json:"archived"`
+		LimitPaise *int64 `json:"limitPaise"`
 	}
 	if err := httpjson.Decode(w, r, &req); err != nil {
 		h.badBody(w)
@@ -277,6 +278,25 @@ func (h *Handler) updateCategory(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.fail(w, "update category", err)
 		return
+	}
+	if req.LimitPaise != nil {
+		if category.Kind != Expense {
+			h.fail(w, "update category budget", ErrBudgetNotExpense)
+			return
+		}
+		if category.Committed {
+			h.fail(w, "update category budget", ErrBudgetCommitted)
+			return
+		}
+		if *req.LimitPaise == 0 {
+			err = h.service.DeleteBudget(r.Context(), id)
+		} else {
+			_, err = h.service.SetBudget(r.Context(), id, *req.LimitPaise)
+		}
+		if err != nil {
+			h.fail(w, "update category budget", err)
+			return
+		}
 	}
 	httpjson.Write(w, http.StatusOK, toCategoryResponse(category))
 }

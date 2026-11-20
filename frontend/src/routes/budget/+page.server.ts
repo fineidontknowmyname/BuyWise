@@ -122,10 +122,18 @@ export const actions: Actions = {
 			return fail(400, { error: 'Category ID and name are required.' });
 		}
 
+		const rawLimit = form.get('monthlyLimit');
+		const amount = typeof rawLimit === 'string' ? rawLimit.trim() : '';
+		const limitPaise = rawLimit === null ? undefined : amount === '' ? 0 : parseRupees(amount);
+		if (limitPaise === null) {
+			return fail(400, {
+				error: 'Enter a valid budget amount in rupees, or leave it blank to remove the limit.'
+			});
+		}
 		const base = apiUrl();
 		const res = await apiRequest<Category>(fetch, base, `/categories/${id}`, {
 			method: 'PUT',
-			body: JSON.stringify({ name, kind, committed, archived })
+			body: JSON.stringify({ name, kind, committed, archived, limitPaise })
 		});
 
 		if (!res.ok) {
@@ -133,48 +141,6 @@ export const actions: Actions = {
 		}
 
 		return { success: true, updated: res.data.name };
-	},
-
-	setBudget: async ({ request, fetch }) => {
-		const form = await request.formData();
-		const categoryId = String(form.get('categoryId') ?? '');
-		const limit = String(form.get('limit') ?? '');
-
-		if (!categoryId) {
-			return fail(400, { error: 'Category ID is required.' });
-		}
-
-		// Empty string or "none" means remove budget limit
-		if (limit === '' || limit.toLowerCase() === 'none') {
-			const delRes = await apiRequest(
-				fetch,
-				apiUrl(),
-				`/budgets/${encodeURIComponent(categoryId)}`,
-				{
-					method: 'DELETE'
-				}
-			);
-			if (!delRes.ok) {
-				return fail(delRes.status, { error: delRes.error.message });
-			}
-			return { success: true, removed: true };
-		}
-
-		const limitPaise = parseRupees(limit);
-		if (limitPaise === null || limitPaise < 0) {
-			return fail(400, { error: 'Enter a valid amount in rupees (e.g. 5000 or 5000.50).' });
-		}
-
-		const res = await apiRequest(fetch, apiUrl(), `/budgets/${encodeURIComponent(categoryId)}`, {
-			method: 'PUT',
-			body: JSON.stringify({ limitPaise })
-		});
-
-		if (!res.ok) {
-			return fail(res.status, { error: res.error.message });
-		}
-
-		return { success: true };
 	},
 
 	archiveCategory: async ({ request, fetch }) => {
