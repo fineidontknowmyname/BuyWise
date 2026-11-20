@@ -28,7 +28,7 @@ func storeFixture(t *testing.T) (*Service, *pgxpool.Pool) {
 	if _, err := migrate.Apply(ctx, pool, os.DirFS("../../../migrations")); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if _, err := pool.Exec(ctx, "TRUNCATE finance.transactions, finance.accounts"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE finance.transactions, finance.accounts CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	return NewService(NewStore(pool), func() time.Time { return clockUTC }), pool

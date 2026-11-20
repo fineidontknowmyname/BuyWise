@@ -239,7 +239,7 @@ func TestStoreBudgetsAndSpending(t *testing.T) {
 	if _, err := migrate.Apply(ctx, pool, os.DirFS("../../../migrations")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, "TRUNCATE finance.budgets, finance.transactions, finance.accounts"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE finance.budgets, finance.transactions, finance.accounts CASCADE"); err != nil {
 		t.Fatal(err)
 	}
 	svc := NewService(NewStore(pool), func() time.Time { return clockUTC })

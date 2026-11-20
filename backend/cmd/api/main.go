@@ -16,13 +16,14 @@ import (
 	"selfemi/internal/modules/pricing"
 	"selfemi/internal/platform/config"
 	"selfemi/internal/platform/database"
+	"selfemi/internal/platform/httpserver"
 	"selfemi/internal/platform/identity"
 )
 
 const shutdownTimeout = 10 * time.Second
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(logger); err != nil {
 		logger.Error("api stopped with error", "error", err)
 		os.Exit(1)
@@ -66,7 +67,7 @@ func runWithPriceProvider(logger *slog.Logger, provider pricing.PriceProvider) e
 
 	server := &http.Server{
 		Addr: cfg.APIAddr,
-		Handler: app.NewHandler(app.Dependencies{
+		Handler: httpserver.Observe(app.NewHandler(app.Dependencies{
 			DB:            pool,
 			Identity:      identity.New(pool),
 			GoalsRepo:     goalsStore,
@@ -75,8 +76,11 @@ func runWithPriceProvider(logger *slog.Logger, provider pricing.PriceProvider) e
 			PriceProvider: provider,
 			Logger:        logger,
 			Now:           time.Now,
-		}),
+		}), logger),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       90 * time.Second,
 	}
 
 	serveErr := make(chan error, 1)

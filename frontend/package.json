@@ -18,7 +18,7 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
-		"@sveltejs/adapter-auto": "^8.0.0",
+		"@sveltejs/adapter-node": "6.0.5",
 		"@sveltejs/kit": "^3.0.0",
 		"@sveltejs/vite-plugin-svelte": "^7.2.0",
 		"@types/node": "^22",
@@ -46,6 +46,6 @@
 		"mammoth": "^1.13.0",
 		"pdf-parse": "^2.4.5",
 		"puppeteer-core": "^25.16.0",
-		"xlsx": "^0.18.5"
+		"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
 	}
 }

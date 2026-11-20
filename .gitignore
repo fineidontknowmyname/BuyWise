@@ -12,3 +12,4 @@ reverse-engineering/
 
 # Local Phase 7 verification
 /backend/internal/modules/finance/capture_test.go
+/deploy/load.js

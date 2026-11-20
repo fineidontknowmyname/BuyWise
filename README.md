@@ -8,7 +8,7 @@ BuyWise is a modern personal finance and purchase planning web application desig
 
 ## Architecture
 
-- **Backend:** Go 1.27, standard library `net/http` web service bound to `127.0.0.1:8080`, `pgx` driver, plain SQL migrations.
+- **Backend:** Go 1.27.4 or later, standard library `net/http` web service bound to `127.0.0.1:8080` for local development, `pgx` driver, plain SQL migrations.
 - **Frontend:** SvelteKit 3, Svelte 5 (Runes), TypeScript, Vite, custom fintech design system with light/dark theme support.
 - **Database:** Local PostgreSQL 18.
 - **Security & Privacy:** The browser communicates exclusively with SvelteKit. SvelteKit server endpoints proxy requests to the private Go API on loopback (`127.0.0.1`).
@@ -136,3 +136,7 @@ The debug APK is written to `frontend/mobile/android/app/build/outputs/apk/debug
 Notification capture is off by default. Grant Android notification access from **Settings**, enter only the payment app package IDs you want to use, then enable capture in BuyWise. Capture checks selected apps for unambiguous INR debit messages. Raw notification text stays on the device transiently and is discarded. Structured suggestions wait in the encrypted queue until you tap **Sync**, and remain separate from posted expenses until you confirm them. To stop capture, disable it in BuyWise and revoke Android notification access. Disabling in BuyWise clears unsent suggestions.
 
 Android Keystore protects the session, queue, and read cache. Cached records expire after 24 hours and are marked in the app. Expense writes require connectivity. Manual submission retries reuse the request key while the form is open. Successful notification uploads leave the queue, and the Go API deduplicates repeated deliveries. Signing out clears local records.
+
+## Deployment
+
+The [deployment runbook](deploy/README.md) covers the production topology, environment setup, GitHub release gates, database recovery, and staging verification.

@@ -23,7 +23,7 @@ export const handleFetch: HandleFetch = ({ event, request, fetch }) => {
 	return fetch(request);
 };
 
-export const handle: Handle = async ({ event, resolve }) => {
+const handleSession: Handle = async ({ event, resolve }) => {
 	const path = event.url.pathname;
 	if (path.startsWith('/api/mobile/')) return resolve(event);
 	const cookie = event.cookies.get(sessionCookie);
@@ -50,4 +50,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 	if (path.startsWith('/api/')) error(401, 'Sign in to continue.');
 	redirect(303, '/sign-in');
+};
+
+export const handle: Handle = async (input) => {
+	const response = await handleSession(input);
+	const headers = new Headers(response.headers);
+	headers.set('X-Content-Type-Options', 'nosniff');
+	headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+	headers.set('X-Frame-Options', 'DENY');
+	headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+	if (input.event.url.protocol === 'https:') {
+		headers.set('Strict-Transport-Security', 'max-age=31536000');
+	}
+	return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 };
