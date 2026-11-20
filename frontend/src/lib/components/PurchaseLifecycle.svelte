@@ -200,7 +200,7 @@
 				{/if}
 			{/if}
 			{#if lifecycle.allocations.length}
-				<h3>Allocation history</h3>
+				<h3 id="allocation-history">Allocation history</h3>
 				{#each lifecycle.allocations as allocation, index (index)}
 					<details>
 						<summary

@@ -133,7 +133,7 @@
 					</thead>
 					<tbody>
 						{#each data.transactions as tx (tx.id)}
-							<tr class:void-row={tx.voided} data-testid="transaction">
+							<tr id={'transaction-' + tx.id} class:void-row={tx.voided} data-testid="transaction">
 								<td class="tabular-nums">{tx.occurredOn}</td>
 								<td>
 									<span class="badge badge-neutral">

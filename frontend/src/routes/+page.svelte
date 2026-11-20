@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { formatRupees } from '#lib/money.js';
 	import FinancialChart from '#lib/components/FinancialChart.svelte';
+	import ActivityList from '#lib/components/ActivityList.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import QuickExpenseModal from '#lib/components/QuickExpenseModal.svelte';
 	import type { PageProps } from './$types';
@@ -48,8 +49,6 @@
 		budgetLimit > 0 ? Math.min(100, Math.round((budgetSpent / budgetLimit) * 100)) : 0
 	);
 
-	const categoryMap = $derived(new Map(data.categories.map((c) => [c.id, c.name])));
-
 	// Goal Modal URL extraction bindings
 	let newGoalName = $state('');
 	let newGoalUrl = $state('');
@@ -92,7 +91,11 @@
 				<Calendar size={13} />
 				<span>Reporting Period: {currentReportingPeriod}</span>
 			</div>
-			<h1 class="page-headline">{greeting}</h1>
+			<h1 class="page-headline">
+				{greeting}{data.workspacePreferences?.displayName
+					? `, ${data.workspacePreferences.displayName}`
+					: ''}
+			</h1>
 			<p class="page-subheadline">
 				Here is your centralized financial overview and purchase readiness summary.
 			</p>
@@ -146,7 +149,9 @@
 					<Wallet size={20} />
 				</div>
 			</div>
-			<div class="stat-value tabular-nums">{formatRupees(data.totalLiquidBalancePaise)}</div>
+			<div class="stat-value tabular-nums">
+				{data.accountsAvailable ? formatRupees(data.totalLiquidBalancePaise) : 'Unavailable'}
+			</div>
 			<div class="stat-footer">
 				<span class="footer-link">
 					{data.accounts.length} verified {data.accounts.length === 1 ? 'account' : 'accounts'}
@@ -163,7 +168,7 @@
 				</div>
 			</div>
 			<div class="stat-value tabular-nums text-success">
-				{formatRupees(data.monthlyIncomePaise)}
+				{data.weeks ? formatRupees(data.monthlyIncomePaise) : 'Unavailable'}
 			</div>
 			<div class="stat-footer">
 				<span class="text-xs text-secondary">Inflows recorded this month</span>
@@ -179,7 +184,7 @@
 				</div>
 			</div>
 			<div class="stat-value tabular-nums text-danger">
-				{formatRupees(data.monthlyExpensePaise)}
+				{data.weeks ? formatRupees(data.monthlyExpensePaise) : 'Unavailable'}
 			</div>
 			<div class="stat-footer">
 				<span class="text-xs text-secondary">Outflows across all categories</span>
@@ -194,7 +199,9 @@
 					<Target size={20} />
 				</div>
 			</div>
-			<div class="stat-value tabular-nums text-primary">{formatRupees(data.totalSavingsPaise)}</div>
+			<div class="stat-value tabular-nums text-primary">
+				{data.goalsAvailable ? formatRupees(data.totalSavingsPaise) : 'Unavailable'}
+			</div>
 			<div class="stat-footer">
 				<a href={resolve('/goals')} class="footer-link-action">
 					Across {data.goals.length}
@@ -209,12 +216,7 @@
 	<div class="analytics-grid">
 		<!-- Left: Income-vs-Expense Chart with Week, Month, and Year tabs -->
 		<div class="chart-col">
-			<FinancialChart
-				spentPaise={data.monthlyExpensePaise || budgetSpent}
-				limitPaise={data.monthlyIncomePaise || budgetLimit}
-				remainingPaise={budgetRemaining}
-				title="Income vs. Expense Flow"
-			/>
+			<FinancialChart weeks={data.weeks} />
 		</div>
 
 		<!-- Right: Budget Utilization Card -->
@@ -229,54 +231,119 @@
 				</a>
 			</div>
 
-			<div class="budget-overview-box">
-				<div class="budget-big-number">
-					<span class="budget-spent-val tabular-nums">{formatRupees(budgetSpent)}</span>
-					<span class="budget-limit-sub">of {formatRupees(budgetLimit)} limit</span>
-				</div>
-
-				<div class="budget-progress-track">
-					<div
-						class="budget-progress-fill"
-						class:warning={budgetUtilization >= 75 && budgetUtilization <= 95}
-						class:danger={budgetUtilization > 95}
-						style="width: {budgetUtilization}%;"
-					></div>
-				</div>
-
-				<div class="threshold-indicators">
-					<div class="thresh-item" class:active={budgetUtilization < 75}>
-						<span class="thresh-dot green"></span>
-						<span class="text-xs">Normal (&lt;75%)</span>
+			{#if !data.budgetReport}<p>Budget totals are temporarily unavailable.</p>
+			{:else if !data.budgetReport.lines.length}<p>No category budgets are set for this month.</p>
+			{:else}<div class="budget-overview-box">
+					<div class="budget-big-number">
+						<span class="budget-spent-val tabular-nums">{formatRupees(budgetSpent)}</span>
+						<span class="budget-limit-sub">of {formatRupees(budgetLimit)} limit</span>
 					</div>
-					<div
-						class="thresh-item"
-						class:active={budgetUtilization >= 75 && budgetUtilization <= 95}
-					>
-						<span class="thresh-dot amber"></span>
-						<span class="text-xs">Warning (75–95%)</span>
-					</div>
-					<div class="thresh-item" class:active={budgetUtilization > 95}>
-						<span class="thresh-dot red"></span>
-						<span class="text-xs">Critical (&gt;95%)</span>
-					</div>
-				</div>
 
-				<div class="discretionary-info-box">
-					<span class="text-xs text-secondary">Discretionary Remaining:</span>
-					<strong
-						class="tabular-nums font-mono"
-						class:text-success={budgetRemaining >= 0}
-						class:text-danger={budgetRemaining < 0}
-					>
-						{formatRupees(budgetRemaining)}
-					</strong>
-				</div>
-			</div>
+					<div class="budget-progress-track">
+						<div
+							class="budget-progress-fill"
+							class:warning={budgetUtilization >= 75 && budgetUtilization <= 95}
+							class:danger={budgetUtilization > 95}
+							style="width: {budgetUtilization}%;"
+						></div>
+					</div>
+
+					<div class="threshold-indicators">
+						<div class="thresh-item" class:active={budgetUtilization < 75}>
+							<span class="thresh-dot green"></span>
+							<span class="text-xs">Normal (&lt;75%)</span>
+						</div>
+						<div
+							class="thresh-item"
+							class:active={budgetUtilization >= 75 && budgetUtilization <= 95}
+						>
+							<span class="thresh-dot amber"></span>
+							<span class="text-xs">Warning (75–95%)</span>
+						</div>
+						<div class="thresh-item" class:active={budgetUtilization > 95}>
+							<span class="thresh-dot red"></span>
+							<span class="text-xs">Critical (&gt;95%)</span>
+						</div>
+					</div>
+
+					<div class="discretionary-info-box">
+						<span class="text-xs text-secondary">Remaining in budgeted categories</span>
+						<strong
+							class="tabular-nums font-mono"
+							class:text-success={budgetRemaining >= 0}
+							class:text-danger={budgetRemaining < 0}
+						>
+							{formatRupees(budgetRemaining)}
+						</strong>
+					</div>
+				</div>{/if}
 		</div>
 	</div>
 
 	<!-- Lower Grid: Active Purchase Goals & Recent Activity -->
+	<section class="card workspace-summary">
+		<h2>Financial position</h2>
+		{#if data.loadIncomplete}<p role="alert">
+				Some dashboard figures could not load. Refresh before relying on these totals.
+			</p>{/if}
+		{#if data.foundation}
+			<dl>
+				<div>
+					<dt>Safe monthly capacity</dt>
+					<dd>
+						{data.foundation.profile.revision
+							? formatRupees(data.foundation.capacity.safeSavingsPaise)
+							: 'Set up your financial profile'}
+					</dd>
+				</div>
+				<div>
+					<dt>Monthly committed outflows</dt>
+					<dd>
+						{data.foundation.profile.revision
+							? formatRupees(data.foundation.capacity.committedPaise)
+							: 'Unavailable'}
+					</dd>
+				</div>
+				<div>
+					<dt>Emergency reserve</dt>
+					<dd>
+						{formatRupees(
+							data.foundation.emergencySavingsPaise
+						)}{#if data.foundation.profile.revision}
+							/ {formatRupees(data.foundation.profile.emergencyTargetPaise)}{/if}
+					</dd>
+				</div>
+			</dl>
+		{:else}<p>Financial profile figures are temporarily unavailable.</p>{/if}
+		<a href={resolve('/finances')}>View financial profile</a>
+		{#if data.milestone}
+			<h2>
+				{data.milestone.targetDate && data.milestone.targetDate >= data.today
+					? 'Next dated milestone'
+					: 'Active milestone'}
+			</h2>
+			<p>
+				<a href={resolve('/goals/[id]', { id: data.milestone.id })}>{data.milestone.name}</a
+				>{#if data.milestone.targetDate}
+					· {data.milestone.targetDate}{/if}
+			</p>
+			{#if data.decision}
+				<p>Current assessment · {data.decision.state.replaceAll('_', ' ').toLowerCase()}</p>
+				{#if data.workspacePreferences?.priceUpdates !== false}
+					<p>
+						Checkout {data.decision.checkoutPaise === null
+							? 'unavailable'
+							: formatRupees(
+									data.decision.checkoutPaise
+								)}{#if data.decision.selectedOffer?.observedOn}
+							· observed {data.decision.selectedOffer
+								.observedOn}{/if}{#if data.decision.price.reasonCodes.includes('observation_stale')}
+							· stale{/if}
+					</p>
+				{/if}
+			{:else}<p>The current assessment is temporarily unavailable.</p>{/if}
+		{:else}<p>No active purchase milestone.</p>{/if}
+	</section>
 	<div class="lower-grid">
 		<!-- Active Purchase Goals -->
 		<div class="goals-col card">
@@ -290,7 +357,8 @@
 				</a>
 			</div>
 
-			{#if data.goals.length === 0}
+			{#if !data.goalsAvailable}<p>Purchase goals are temporarily unavailable.</p>
+			{:else if data.goals.length === 0}
 				<div class="empty-state">
 					<div class="empty-icon-box">
 						<Target size={28} />
@@ -344,57 +412,16 @@
 			<div class="card-header">
 				<div>
 					<h3 class="card-title">Recent Activity</h3>
-					<p class="card-desc">Latest posted entries in your accounts</p>
+					<p class="card-desc">Ledger entries and purchase history</p>
 				</div>
-				<a href={resolve('/accounts')} class="btn btn-ghost btn-sm">
-					View accounts <ArrowRight size={14} /></a
+				<a href={resolve('/activity')} class="btn btn-ghost btn-sm">
+					View activity <ArrowRight size={14} /></a
 				>
 			</div>
 
-			{#if data.recentTransactions.length === 0}
-				<div class="empty-state">
-					<div class="empty-icon-box">
-						<Wallet size={28} />
-					</div>
-					<h4 class="empty-title">No recent activity</h4>
-					<p class="empty-text">Add transactions to your accounts to see cash flow activity.</p>
-				</div>
-			{:else}
-				<div class="table-container">
-					<table class="table">
-						<thead>
-							<tr>
-								<th>Date</th>
-								<th>Description</th>
-								<th>Category</th>
-								<th class="text-right">Amount</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each data.recentTransactions as tx (tx.id)}
-								<tr>
-									<td class="font-mono text-xs">{tx.occurredOn}</td>
-									<td class="font-medium">{tx.note || 'Transaction'}</td>
-									<td>
-										<span class="badge badge-neutral text-xs">
-											{categoryMap.get(tx.categoryId) ?? 'General'}
-										</span>
-									</td>
-									<td class="text-right font-mono tabular-nums">
-										<span
-											class="amount-val"
-											class:text-success={tx.kind === 'income'}
-											class:text-danger={tx.kind === 'expense'}
-										>
-											{tx.kind === 'income' ? '+' : '-'}{formatRupees(tx.amountPaise)}
-										</span>
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-			{/if}
+			{#if data.activity}<ActivityList events={data.activity} />{:else}<p>
+					Activity is temporarily unavailable.
+				</p>{/if}
 		</div>
 	</div>
 </div>
@@ -469,6 +496,23 @@
 />
 
 <style>
+	.workspace-summary {
+		margin: 1.2rem 0;
+		padding: clamp(1rem, 3vw, 1.5rem);
+	}
+	.workspace-summary dl {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+		gap: 0.8rem;
+	}
+	.workspace-summary dd {
+		margin: 0.35rem 0 0;
+		font-weight: 700;
+	}
+	.workspace-summary a {
+		text-decoration: underline;
+	}
+
 	.dashboard-page {
 		display: flex;
 		flex-direction: column;
@@ -820,32 +864,6 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-	}
-
-	.table-container {
-		overflow-x: auto;
-	}
-
-	.table {
-		width: 100%;
-		border-collapse: collapse;
-		text-align: left;
-	}
-
-	.table th {
-		padding: 10px 14px;
-		background-color: var(--surface-secondary);
-		color: var(--foreground-secondary);
-		font-size: 0.78rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.table td {
-		padding: 12px 14px;
-		border-bottom: 1px solid var(--border-subtle);
-		font-size: 0.88rem;
 	}
 
 	.url-input-row {

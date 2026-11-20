@@ -1,5 +1,9 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
+	const historyLink = $derived(
+		typeof window !== 'undefined' && page.url.hash === '#decision-history'
+	);
 	import { formatRupees } from '#lib/money.js';
 	import type { Decision } from '#lib/server/api.js';
 
@@ -137,7 +141,7 @@
 			{/if}
 		</nav>
 	{/if}
-	<details>
+	<details id="decision-history" open={historyLink}>
 		<summary>Saved decision history</summary>
 		{#if history === null}
 			<p>Decision history is temporarily unavailable.</p>
@@ -149,7 +153,7 @@
 			</p>
 		{:else}
 			{#each history as previous (previous.id)}
-				<details class="history-item">
+				<details class="history-item" id={'decision-' + previous.id}>
 					<summary
 						>{labels[previous.state]} · {stamp(previous.decidedAt)} · {previous.rulesVersion}</summary
 					>

@@ -108,3 +108,11 @@ Open **Financial Assistant** and select a question. The page reads existing purc
 Responses contain `title`, `facts`, `sources`, `explanation`, and `mode`. `ai_assisted` means Groq prioritized statements written by BuyWise. BuyWise renders those statements and the original records. `buywise` means the explanation uses BuyWise's default order. The optional `fallback` field distinguishes missing AI configuration from a temporary provider failure. A missing or inaccessible record returns `404`, and a source API failure returns `503`.
 
 Assistant history lives in the page for the current visit. BuyWise keeps no stored transcript. The provider receives only the selected topic and qualitative statements. Account details, record titles, IDs, transaction notes, and financial figures stay within BuyWise. The application logs only the topic, outcome, fact count, and elapsed time for answered requests. The endpoint limits requests per signed-in user, and the Groq call has a bounded timeout and retry. The assistant works without a Groq key and requires no database migration.
+
+## Overview, activity, and profile
+
+Overview uses posted, non-voided ledger entries for the monthly cash-flow chart. It also shows capacity and reserves from the financial profile and the live assessment for the next active milestone. Activity shows ledger and audit records separately and links back to their domain screens.
+
+`GET /activity` returns up to 20 entries and an optional `next` cursor. Pass that cursor as `before` to load older entries. `kind` accepts `ledger`, `goals`, `decisions`, `prices`, or `purchases`. The feed reads existing domain records, including saved decisions and purchase history.
+
+Migration `0017` adds workspace preferences. Profile also links to financial assumptions, supports signing out other sessions, and downloads a workspace snapshot of profile settings, account balances, goals, products, and the current budget. Account deletion and a complete data export require the product's privacy and retention requirements.

@@ -100,6 +100,25 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth/session", h.session)
 	mux.HandleFunc("POST /auth/logout", h.logout)
 	mux.HandleFunc("POST /auth/refresh", h.refresh)
+	mux.HandleFunc("POST /auth/revoke-others", h.revokeOthers)
+}
+
+func (h *Handler) revokeOthers(w http.ResponseWriter, r *http.Request) {
+	hash := tokenHash(r)
+	id, _, err := h.user(r)
+	if err != nil {
+		sessionError(w, err)
+		return
+	}
+	tag, err := h.pool.Exec(r.Context(), `DELETE FROM identity.sessions
+		WHERE user_id=$1::uuid AND token_hash<>$2 AND EXISTS (SELECT FROM identity.sessions
+		WHERE user_id=$1::uuid AND token_hash=$2 AND expires_at>now())`, id, hash)
+	if err != nil {
+		unavailable(w)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httpjson.Write(w, 200, map[string]int64{"revoked": tag.RowsAffected()})
 }
 
 func (h *Handler) authenticate(register bool) http.HandlerFunc {

@@ -9,9 +9,7 @@
 		ShoppingBag,
 		Calculator,
 		Wallet,
-		PieChart,
-		FileText,
-		Receipt,
+		UserRound,
 		Activity,
 		X
 	} from '@lucide/svelte';
@@ -24,17 +22,21 @@
 		onclose?: () => void;
 	} = $props();
 
+	const financeLinks = [
+		{ href: resolve('/accounts'), label: 'Accounts' },
+		{ href: resolve('/expenses'), label: 'Expenses' },
+		{ href: resolve('/budget'), label: 'Budget & Categories' },
+		{ href: resolve('/reports'), label: 'Reports' }
+	];
 	const navItems = [
 		{ href: resolve('/'), label: 'Overview', icon: LayoutDashboard, exact: true },
-		{ href: resolve('/ai'), label: 'Financial Assistant', icon: Sparkles },
 		{ href: resolve('/goals'), label: 'Purchase Goals', icon: Target },
+		{ href: resolve('/finances'), label: 'My Finances', icon: Wallet, children: financeLinks },
 		{ href: resolve('/products'), label: 'Products & Prices', icon: ShoppingBag },
-		{ href: resolve('/simulator'), label: 'Simulator', icon: Calculator },
-		{ href: resolve('/reports'), label: 'Reports', icon: FileText },
-		{ href: resolve('/finances'), label: 'My finances', icon: Wallet },
-		{ href: resolve('/expenses'), label: 'Expenses', icon: Receipt },
-		{ href: resolve('/accounts'), label: 'Accounts', icon: Wallet },
-		{ href: resolve('/budget'), label: 'Budget & Categories', icon: PieChart }
+		{ href: resolve('/simulator'), label: 'Reverse EMI', icon: Calculator },
+		{ href: resolve('/activity'), label: 'Activity', icon: Activity },
+		{ href: resolve('/ai'), label: 'AI Assist', icon: Sparkles },
+		{ href: resolve('/profile'), label: 'Profile', icon: UserRound }
 	];
 
 	function isActive(href: string, exact = false) {
@@ -81,6 +83,18 @@
 							<span class="active-indicator"></span>
 						{/if}
 					</a>
+					{#if item.children && (active || item.children.some((child) => isActive(child.href)))}<ul
+							class="subnav"
+						>
+							{#each item.children as child (child.href)}<li>
+									<a
+										class="nav-link"
+										class:active={isActive(child.href)}
+										href={child.href}
+										onclick={onclose}>{child.label}</a
+									>
+								</li>{/each}
+						</ul>{/if}
 				</li>
 			{/each}
 		</ul>
@@ -95,6 +109,12 @@
 </aside>
 
 <style>
+	.subnav {
+		list-style: none;
+		padding: 0 0 0 1rem;
+		margin: 0;
+	}
+
 	.sidebar-backdrop {
 		position: fixed;
 		inset: 0;

@@ -7,7 +7,7 @@
 	import Toast from '#lib/components/Toast.svelte';
 	import type { LayoutProps } from './$types';
 
-	let { children }: LayoutProps = $props();
+	let { children, data }: LayoutProps = $props();
 
 	let mobileMenuOpen = $state(false);
 
@@ -30,7 +30,7 @@
 {#if page.url.pathname === '/sign-in'}
 	{@render children()}
 {:else}
-	<div class="app-shell">
+	<div class="app-shell" class:reduced-motion={data.workspacePreferences?.reducedMotion}>
 		<Sidebar isOpen={mobileMenuOpen} onclose={closeMobileMenu} />
 
 		<div class="main-wrapper">
@@ -43,3 +43,11 @@
 
 	<Toast />
 {/if}
+
+<style>
+	.reduced-motion :global(*) {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+</style>
