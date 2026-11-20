@@ -1,5 +1,7 @@
 # BuyWise deployment runbook
 
+Use the [release rehearsal](REHEARSAL.md) after staging is reachable to seed synthetic workspaces, verify release journeys and collect sign-off evidence.
+
 ## Prepare staging
 
 Use independent staging and production PostgreSQL 18 clusters, origins, provider keys, and backups. The public entry point is SvelteKit over HTTPS. Run Go and PostgreSQL on a private network. Android should use the same public origin as the browser. Its `/api/mobile` requests reach Go through the SvelteKit gateway.
