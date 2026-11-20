@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { askAssistant, type AssistantAnswer } from '#lib/assistant.js';
+	import AssistantEvidence from '#lib/components/AssistantEvidence.svelte';
 	import { resolve } from '$app/paths';
 	import { formatRupees } from '#lib/money.js';
 	import Modal from '#lib/components/Modal.svelte';
@@ -41,7 +43,7 @@
 
 	// AI Price Analysis state
 	let isAnalyzing = $state(false);
-	let aiAnalysisText = $state('');
+	let aiAnalysisText = $state<AssistantAnswer | null>(null);
 	let aiAnalysisError = $state('');
 
 	// Edit Product Form state
@@ -82,35 +84,12 @@
 	const linkedGoal = $derived(data.goals.find((g: Goal) => g.productId === data.product.id));
 
 	async function requestPriceAnalysis() {
-		if (!data.stats) return;
 		isAnalyzing = true;
 		aiAnalysisError = '';
-
 		try {
-			const res = await fetch(resolve('/api/ai/analyze-price'), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					productName: data.product.name,
-					stats: {
-						currentPricePaise: data.product.currentPricePaise,
-						lowestPricePaise: data.stats.lowestPricePaise,
-						highestPricePaise: data.stats.highestPricePaise,
-						averagePricePaise: data.stats.averagePricePaise,
-						observationCount: data.stats.observationCount
-					}
-				})
-			});
-
-			if (!res.ok) {
-				const err = await res.json().catch(() => ({}));
-				throw new Error(err.error || 'Failed to fetch AI price analysis.');
-			}
-
-			const result = await res.json();
-			aiAnalysisText = result.analysis;
-		} catch (err: unknown) {
-			aiAnalysisError = err instanceof Error ? err.message : 'AI price analysis unavailable.';
+			aiAnalysisText = await askAssistant({ topic: 'price', productId: data.product.id });
+		} catch (err) {
+			aiAnalysisError = err instanceof Error ? err.message : 'The assistant is temporarily unavailable.';
 		} finally {
 			isAnalyzing = false;
 		}
@@ -267,21 +246,21 @@
 				<div class="ai-header">
 					<div class="ai-badge">
 						<Sparkles size={16} />
-						<span>AI Price Intelligence</span>
+						<span>Price history explanation</span>
 					</div>
 					{#if !aiAnalysisText}
 						<button
 							type="button"
 							class="btn btn-primary btn-sm"
 							onclick={requestPriceAnalysis}
-							disabled={isAnalyzing || !data.stats}
+							disabled={isAnalyzing}
 						>
 							{#if isAnalyzing}
 								<span class="spinner-small"></span>
 								<span>Analyzing...</span>
 							{:else}
 								<Sparkles size={14} />
-								<span>Analyze Price Trend</span>
+								<span>Explain price history</span>
 							{/if}
 						</button>
 					{/if}
@@ -289,14 +268,14 @@
 
 				{#if aiAnalysisText}
 					<div class="ai-analysis-content">
-						<p>{aiAnalysisText}</p>
+						<AssistantEvidence answer={aiAnalysisText} />
 						<button
 							type="button"
 							class="re-analyze-btn"
 							onclick={requestPriceAnalysis}
 							disabled={isAnalyzing}
 						>
-							Re-run Analysis
+							Refresh explanation
 						</button>
 					</div>
 				{:else if aiAnalysisError}
@@ -305,8 +284,7 @@
 					</div>
 				{:else}
 					<p class="ai-prompt-hint">
-						Get an instant AI assessment on whether current prices represent a historical bargain,
-						seasonal low, or if you should wait.
+						Review the latest observations and the recorded range for each offer.
 					</p>
 				{/if}
 			</section>

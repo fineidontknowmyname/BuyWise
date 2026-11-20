@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
+	import { askAssistant, type AssistantAnswer } from '#lib/assistant.js';
+	import AssistantEvidence from '#lib/components/AssistantEvidence.svelte';
 	import { formatRupees } from '#lib/money.js';
 	import { calculateEMI, generateAmortizationSchedule } from '#lib/emi.js';
 	import type { Product, Goal } from '#lib/server/api.js';
@@ -34,7 +35,7 @@
 
 	// AI Advice state
 	let isAnalyzing = $state(false);
-	let aiAdvice = $state('');
+	let aiAdvice = $state<AssistantAnswer | null>(null);
 	let aiError = $state('');
 
 	// Populate from selected product or goal
@@ -100,42 +101,10 @@
 	async function getAiAdvice() {
 		isAnalyzing = true;
 		aiError = '';
-
-		const prompt = `Please evaluate my purchase scenario:
-Purchase Amount: ₹${purchasePrice.toLocaleString('en-IN')}
-Down Payment: ₹${downPayment.toLocaleString('en-IN')}
-Tenure: ${tenureMonths} months
-Interest Rate: ${annualInterestRate}%
-Monthly Installment: ₹${(simulation.monthlyInstallmentPaise / 100).toLocaleString('en-IN')}
-Total Interest & Fees: ₹${(simulation.extraCostVsCashPaise / 100).toLocaleString('en-IN')}
-My Monthly Discretionary Surplus: ₹${(data.discretionarySurplusPaise / 100).toLocaleString('en-IN')}
-My Total Liquid Balance: ₹${(data.totalLiquidPaise / 100).toLocaleString('en-IN')}
-
-Compare:
-1. Buying in Cash today
-2. Saving upfront for ${simulation.monthsToSaveUpfront} months (Self-EMI)
-3. Taking this EMI loan
-
-Give a sharp, structured recommendation on the wisest financial choice.`;
-
 		try {
-			const res = await fetch(resolve('/api/ai/chat'), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					messages: [{ role: 'user', content: prompt }]
-				})
-			});
-
-			if (!res.ok) {
-				const err = await res.json().catch(() => ({}));
-				throw new Error(err.error || 'Failed to generate AI advice.');
-			}
-
-			const result = await res.json();
-			aiAdvice = result.text;
-		} catch (err: unknown) {
-			aiError = err instanceof Error ? err.message : 'AI analysis temporarily unavailable.';
+			aiAdvice = await askAssistant({ topic: 'capacity' });
+		} catch (err) {
+			aiError = err instanceof Error ? err.message : 'The assistant is temporarily unavailable.';
 		} finally {
 			isAnalyzing = false;
 		}
@@ -543,7 +512,7 @@ Give a sharp, structured recommendation on the wisest financial choice.`;
 				<div class="ai-card-header">
 					<div class="ai-brand">
 						<Sparkles size={18} class="ai-icon" />
-						<h3>BuyWise AI Trade-off Analysis</h3>
+						<h3>Monthly saving capacity</h3>
 					</div>
 					{#if !aiAdvice}
 						<button
@@ -557,7 +526,7 @@ Give a sharp, structured recommendation on the wisest financial choice.`;
 								<span>Evaluating...</span>
 							{:else}
 								<Sparkles size={14} />
-								<span>Get AI Financial Recommendation</span>
+								<span>Explain saving capacity</span>
 							{/if}
 						</button>
 					{/if}
@@ -565,14 +534,14 @@ Give a sharp, structured recommendation on the wisest financial choice.`;
 
 				{#if aiAdvice}
 					<div class="ai-text-body">
-						<p>{aiAdvice}</p>
+						<AssistantEvidence answer={aiAdvice} />
 						<button
 							type="button"
 							class="btn btn-secondary btn-sm re-run-btn"
 							onclick={getAiAdvice}
 							disabled={isAnalyzing}
 						>
-							Re-evaluate Scenario
+							Refresh explanation
 						</button>
 					</div>
 				{:else if aiError}
@@ -581,8 +550,7 @@ Give a sharp, structured recommendation on the wisest financial choice.`;
 					</div>
 				{:else}
 					<p class="ai-hint">
-						Let BuyWise AI evaluate whether taking this EMI harms your savings rate, or if saving
-						upfront is vastly better for your net worth.
+						Review the monthly capacity from your financial profile alongside the simulation above.
 					</p>
 				{/if}
 			</div>

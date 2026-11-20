@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { askAssistant, type AssistantAnswer } from '#lib/assistant.js';
+	import AssistantEvidence from '#lib/components/AssistantEvidence.svelte';
 	import { resolve } from '$app/paths';
 	import { formatRupees } from '#lib/money.js';
 	import { Sparkles, Wallet, PieChart, Target, ShieldCheck } from '@lucide/svelte';
@@ -29,42 +31,16 @@
 
 	// AI Briefing state
 	let isGeneratingBriefing = $state(false);
-	let aiBriefingText = $state('');
+	let aiBriefingText = $state<AssistantAnswer | null>(null);
 	let aiBriefingError = $state('');
 
 	async function generateAiBriefing() {
 		isGeneratingBriefing = true;
 		aiBriefingError = '';
-
-		const prompt = `Generate a concise Executive Financial Briefing for this user:
-Liquid Capital: ₹${(data.totalLiquidPaise / 100).toLocaleString('en-IN')}
-Monthly Budget: Spent ₹${(totalSpentPaise / 100).toLocaleString('en-IN')} of ₹${(totalLimitPaise / 100).toLocaleString('en-IN')} (${budgetSpentPct}% utilized)
-Discretionary Surplus: ₹${(discretionarySurplus / 100).toLocaleString('en-IN')}
-Active Goals: ${data.goals.length} goals (Target: ₹${(totalGoalsTargetPaise / 100).toLocaleString('en-IN')}, Saved: ₹${(totalGoalsSavedPaise / 100).toLocaleString('en-IN')})
-
-Provide a 3-part bulleted briefing:
-1. Executive Assessment (Health status & budget discipline)
-2. Spending & Savings Opportunities
-3. Immediate Action Plan for this week.`;
-
 		try {
-			const res = await fetch(resolve('/api/ai/chat'), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					messages: [{ role: 'user', content: prompt }]
-				})
-			});
-
-			if (!res.ok) {
-				const err = await res.json().catch(() => ({}));
-				throw new Error(err.error || 'Failed to generate briefing.');
-			}
-
-			const result = await res.json();
-			aiBriefingText = result.text;
-		} catch (err: unknown) {
-			aiBriefingError = err instanceof Error ? err.message : 'AI briefing unavailable.';
+			aiBriefingText = await askAssistant({ topic: 'budget' });
+		} catch (err) {
+			aiBriefingError = err instanceof Error ? err.message : 'The assistant is temporarily unavailable.';
 		} finally {
 			isGeneratingBriefing = false;
 		}
@@ -74,9 +50,9 @@ Provide a 3-part bulleted briefing:
 <div class="reports-page">
 	<header class="page-header">
 		<div>
-			<h1 class="page-title">Financial Reports & Health Briefing</h1>
+			<h1 class="page-title">Financial Reports</h1>
 			<p class="page-subtitle">
-				Consolidated performance overview, budget adherence, and AI executive commentary.
+				Review spending, budgets, and goal progress.
 			</p>
 		</div>
 	</header>
@@ -136,8 +112,8 @@ Provide a 3-part bulleted briefing:
 			<div class="ai-title-wrap">
 				<Sparkles size={20} class="sparkle-icon" />
 				<div>
-					<h2 class="card-title">BuyWise AI Executive Briefing</h2>
-					<p class="card-subtitle">Synthesizes all accounts, spending trends, and targets</p>
+					<h2 class="card-title">Budget explanation</h2>
+					<p class="card-subtitle">Uses your current month?s saved budget report</p>
 				</div>
 			</div>
 			{#if !aiBriefingText}
@@ -152,7 +128,7 @@ Provide a 3-part bulleted briefing:
 						<span>Analyzing Data...</span>
 					{:else}
 						<Sparkles size={14} />
-						<span>Generate Executive Briefing</span>
+						<span>Explain my budget</span>
 					{/if}
 				</button>
 			{/if}
@@ -160,7 +136,7 @@ Provide a 3-part bulleted briefing:
 
 		{#if aiBriefingText}
 			<div class="briefing-content">
-				<p>{aiBriefingText}</p>
+				<AssistantEvidence answer={aiBriefingText} />
 				<button
 					type="button"
 					class="btn btn-secondary btn-sm re-brief-btn"
@@ -176,8 +152,7 @@ Provide a 3-part bulleted briefing:
 			</div>
 		{:else}
 			<p class="briefing-prompt-hint">
-				Click "Generate Executive Briefing" to produce a customized, real-time assessment of your
-				financial strengths, risk points, and recommended actions for this week.
+				See how posted spending compares with your saved limits.
 			</p>
 		{/if}
 	</section>

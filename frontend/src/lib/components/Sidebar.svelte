@@ -26,7 +26,7 @@
 
 	const navItems = [
 		{ href: resolve('/'), label: 'Overview', icon: LayoutDashboard, exact: true },
-		{ href: resolve('/ai'), label: 'AI Manager', icon: Sparkles, badge: 'AI' },
+		{ href: resolve('/ai'), label: 'Financial Assistant', icon: Sparkles },
 		{ href: resolve('/goals'), label: 'Purchase Goals', icon: Target },
 		{ href: resolve('/products'), label: 'Products & Prices', icon: ShoppingBag },
 		{ href: resolve('/simulator'), label: 'Simulator', icon: Calculator },
@@ -77,9 +77,6 @@
 							<item.icon size={19} />
 						</span>
 						<span class="nav-label">{item.label}</span>
-						{#if item.badge}
-							<span class="sidebar-badge">{item.badge}</span>
-						{/if}
 						{#if active}
 							<span class="active-indicator"></span>
 						{/if}
@@ -188,18 +185,6 @@
 		height: 6px;
 		border-radius: 50%;
 		background-color: var(--primary);
-	}
-
-	.sidebar-badge {
-		font-size: 10px;
-		font-weight: 700;
-		color: #ffffff;
-		background: linear-gradient(135deg, var(--primary-blue) 0%, var(--accent-cyan) 100%);
-		padding: 1px 6px;
-		border-radius: 999px;
-		margin-left: auto;
-		margin-right: 14px;
-		letter-spacing: 0.04em;
 	}
 
 	.sidebar-footer {
