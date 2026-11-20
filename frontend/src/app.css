@@ -3,43 +3,40 @@
    ========================================================================== */
 
 /* ==========================================================================
-   BuyWise Design System Tokens & Base Styles (FinSet Reference)
+   BuyWise palette
    ========================================================================== */
 
 :root,
 [data-theme='light'] {
-	/* Brand Core Colors */
-	--brand-lime: #c4ee1b;
-	--brand-navy: #24507b;
-	--brand-navy-dark: #193a5a;
-	--brand-navy-light: #326495;
+	color-scheme: light;
+	--brand-dot: #817500;
 
 	/* Surfaces & Backgrounds */
-	--background: #f5f7fa;
+	--background: #f4f4f2;
 	--surface: #ffffff;
-	--surface-secondary: #eaf1f8;
-	--surface-hover: #e2ecf5;
-	--surface-muted: #f0f4f9;
+	--surface-secondary: #ebebe8;
+	--surface-hover: #e4e4e0;
+	--surface-muted: #eeeeeb;
 
 	/* Typography & Foregrounds */
-	--foreground: #172b3a;
-	--foreground-secondary: #687789;
-	--foreground-muted: #8898aa;
+	--foreground: #0d0d0d;
+	--foreground-secondary: #62625e;
+	--foreground-muted: #6d6d67;
 
 	/* Semantic Branding */
-	--primary: #24507b;
-	--primary-hover: #193a5a;
-	--primary-subtle: #eaf1f8;
-	--primary-foreground: #ffffff;
+	--primary: #0d0d0d;
+	--primary-hover: #30302e;
+	--primary-subtle: #ebebe8;
+	--primary-foreground: #f4f4f2;
 
-	--accent: #c4ee1b;
-	--accent-hover: #b5dd14;
-	--accent-subtle: rgba(196, 238, 27, 0.2);
-	--accent-foreground: #172b3a;
+	--accent: #fff01f;
+	--accent-hover: #f0df16;
+	--accent-subtle: #fff8ae;
+	--accent-foreground: #0d0d0d;
 
 	/* Structural Borders */
-	--border: #e2e8f0;
-	--border-subtle: #edf2f7;
+	--border: #dadad6;
+	--border-subtle: #e5e5e1;
 
 	/* Financial Status Indicators (accessible palette) */
 	--success: #16a36a;
@@ -55,57 +52,54 @@
 	--danger-foreground: #991e1e;
 
 	/* Chart Tokens */
-	--chart-grid: #e2e8f0;
-	--chart-bar-bg: #eaf1f8;
-	--chart-accent: #24507b;
-	--chart-accent-2: #c4ee1b;
+	--chart-grid: #dadad6;
+	--chart-bar-bg: #ebebe8;
+	--chart-accent: #171717;
+	--chart-accent-2: #c2ae00;
 
 	/* Shadows */
-	--shadow-sm: 0 1px 2px rgba(23, 43, 58, 0.04);
-	--shadow-md: 0 4px 16px -2px rgba(23, 43, 58, 0.06), 0 2px 4px rgba(23, 43, 58, 0.02);
-	--shadow-lg: 0 12px 32px -4px rgba(23, 43, 58, 0.1), 0 4px 12px rgba(23, 43, 58, 0.04);
+	--shadow-sm: none;
+	--shadow-md: 0 4px 16px rgb(0 0 0 / 8%);
+	--shadow-lg: 0 12px 32px rgb(0 0 0 / 16%);
 
 	/* Sidebar Tokens */
-	--sidebar-bg: #ffffff;
-	--sidebar-border: #e2e8f0;
-	--sidebar-active-bg: #eaf1f8;
-	--sidebar-active-text: #24507b;
-	--sidebar-active-indicator: #c4ee1b;
+	--sidebar-bg: var(--background);
+	--sidebar-border: var(--border);
+	--sidebar-active-bg: var(--surface);
+	--sidebar-active-text: var(--foreground);
+	--sidebar-active-indicator: var(--accent);
 }
 
 [data-theme='dark'] {
-	/* Brand Core Colors */
-	--brand-lime: #c4ee1b;
-	--brand-navy: #24507b;
-	--brand-navy-dark: #193a5a;
-	--brand-navy-light: #4477a8;
+	color-scheme: dark;
+	--brand-dot: #fff01f;
 
 	/* Surfaces & Backgrounds */
-	--background: #0b131e;
-	--surface: #131f30;
-	--surface-secondary: #1a2b42;
-	--surface-hover: #223753;
-	--surface-muted: #172538;
+	--background: #0b0b0b;
+	--surface: #141414;
+	--surface-secondary: #1c1c1b;
+	--surface-hover: #242422;
+	--surface-muted: #191918;
 
 	/* Typography & Foregrounds */
-	--foreground: #f1f5f9;
-	--foreground-secondary: #94a3b8;
-	--foreground-muted: #64748b;
+	--foreground: #f1f1ee;
+	--foreground-secondary: #aaaaa4;
+	--foreground-muted: #9b9b96;
 
 	/* Semantic Branding */
-	--primary: #3b72a8;
-	--primary-hover: #4e86be;
-	--primary-subtle: rgba(59, 114, 168, 0.22);
-	--primary-foreground: #ffffff;
+	--primary: #f1f1ee;
+	--primary-hover: #ffffff;
+	--primary-subtle: #262625;
+	--primary-foreground: #0b0b0b;
 
-	--accent: #c4ee1b;
-	--accent-hover: #d4f648;
-	--accent-subtle: rgba(196, 238, 27, 0.16);
-	--accent-foreground: #0b131e;
+	--accent: #fff01f;
+	--accent-hover: #fff54a;
+	--accent-subtle: #383411;
+	--accent-foreground: #0d0d0d;
 
 	/* Structural Borders */
-	--border: #22334a;
-	--border-subtle: #182638;
+	--border: #2a2a28;
+	--border-subtle: #222221;
 
 	/* Financial Status Indicators */
 	--success: #34d399;
@@ -121,22 +115,22 @@
 	--danger-foreground: #f87171;
 
 	/* Chart Tokens */
-	--chart-grid: #1e2f44;
-	--chart-bar-bg: #18273b;
-	--chart-accent: #4477a8;
-	--chart-accent-2: #c4ee1b;
+	--chart-grid: #2a2a28;
+	--chart-bar-bg: #262625;
+	--chart-accent: #f1f1ee;
+	--chart-accent-2: #fff01f;
 
 	/* Shadows */
-	--shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
-	--shadow-md: 0 4px 20px rgba(0, 0, 0, 0.45);
-	--shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.55);
+	--shadow-sm: none;
+	--shadow-md: 0 4px 16px rgb(0 0 0 / 8%);
+	--shadow-lg: 0 12px 36px rgb(0 0 0 / 45%);
 
 	/* Sidebar Tokens */
-	--sidebar-bg: #0f1a2a;
-	--sidebar-border: #22334a;
-	--sidebar-active-bg: rgba(196, 238, 27, 0.14);
-	--sidebar-active-text: #c4ee1b;
-	--sidebar-active-indicator: #c4ee1b;
+	--sidebar-bg: var(--background);
+	--sidebar-border: var(--border);
+	--sidebar-active-bg: var(--surface);
+	--sidebar-active-text: var(--foreground);
+	--sidebar-active-indicator: var(--accent);
 }
 
 /* ==========================================================================
@@ -144,13 +138,10 @@
    ========================================================================== */
 
 :root {
-	--font-brand:
-		'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-		sans-serif;
-	--font-body:
-		'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-	--font-display: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-	--font-mono: 'Space Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	--font-body: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-brand: var(--font-body);
+	--font-display: var(--font-body);
+	--font-mono: 'Inconsolata', ui-monospace, Consolas, monospace;
 }
 
 *,
@@ -179,7 +170,7 @@ body {
 	font-family: var(--font-body);
 	background-color: var(--background);
 	color: var(--foreground);
-	overflow-x: hidden;
+	overflow-x: clip;
 }
 
 a {
@@ -219,7 +210,7 @@ button {
 }
 
 /* ==========================================================================
-   Typography Hierarchy (FinSet Reference: Plus Jakarta Sans + Inter + Space Mono)
+   Typography
    ========================================================================== */
 
 h1,
@@ -304,59 +295,71 @@ p {
    ========================================================================== */
 
 .app-shell {
-	display: flex;
+	--topbar-height: 72px;
+	--sidebar-width: 236px;
 	min-height: 100vh;
-	background-color: var(--background);
+	min-height: 100dvh;
+	background: var(--background);
+}
+
+.app-body {
+	display: grid;
+	grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+	align-items: start;
 }
 
 .sidebar-container {
-	width: 260px;
-	flex-shrink: 0;
-	background-color: var(--sidebar-bg);
-	border-right: 1px solid var(--sidebar-border);
-	display: flex;
-	flex-direction: column;
-	position: fixed;
-	top: 0;
-	bottom: 0;
-	left: 0;
-	z-index: 40;
-	transition:
-		transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-		background-color 0.2s ease,
-		border-color 0.2s ease;
-}
-
-.main-wrapper {
-	flex: 1;
+	grid-column: 1;
+	grid-row: 1;
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
-	margin-left: 260px;
-	transition: margin-left 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+	height: calc(100dvh - var(--topbar-height));
+	padding: 18px 12px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	position: sticky;
+	top: var(--topbar-height);
+	z-index: 41;
+	border-right: 1px solid var(--border);
+	background: var(--background);
+	opacity: 0;
+	visibility: hidden;
+	transform: translateX(-12px);
+	transition:
+		transform 0.24s ease,
+		opacity 0.24s ease,
+		visibility 0.24s;
+}
+
+.sidebar-container.open {
+	opacity: 1;
+	visibility: visible;
+	transform: translateX(0);
+	transition-property: transform, opacity;
 }
 
 .topbar {
-	height: 70px;
-	background-color: var(--surface);
-	border-bottom: 1px solid var(--border);
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 0 32px;
 	position: sticky;
 	top: 0;
-	z-index: 30;
-	transition:
-		background-color 0.2s ease,
-		border-color 0.2s ease;
+	z-index: 42;
+	isolation: isolate;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	height: var(--topbar-height);
+	padding: 0 16px;
+	border-bottom: 1px solid var(--border);
+	background: var(--surface-secondary);
 }
 
 .content-container {
-	flex: 1;
-	max-width: 1440px;
+	grid-column: 2;
+	grid-row: 1;
 	width: 100%;
-	margin: 0 auto;
+	min-width: 0;
+	max-width: 1180px;
+	margin-inline: auto;
 	padding: 32px;
 }
 
@@ -370,7 +373,7 @@ p {
 	justify-content: center;
 	gap: 8px;
 	padding: 9px 18px;
-	border-radius: 10px;
+	border-radius: 999px;
 	font-size: 0.9rem;
 	font-weight: 500;
 	line-height: 1;
@@ -387,26 +390,22 @@ p {
 .btn-primary {
 	background-color: var(--primary);
 	color: var(--primary-foreground);
-	box-shadow: 0 2px 6px rgba(36, 80, 123, 0.25);
 }
 
 .btn-primary:hover {
 	background-color: var(--primary-hover);
 	color: var(--primary-foreground);
-	box-shadow: 0 4px 12px rgba(36, 80, 123, 0.35);
 }
 
 .btn-accent {
 	background-color: var(--accent);
 	color: var(--accent-foreground);
 	font-weight: 600;
-	box-shadow: 0 2px 8px rgba(196, 238, 27, 0.3);
 }
 
 .btn-accent:hover {
 	background-color: var(--accent-hover);
 	color: var(--accent-foreground);
-	box-shadow: 0 4px 14px rgba(196, 238, 27, 0.45);
 }
 
 .btn-secondary {
@@ -444,7 +443,7 @@ p {
 .btn-sm {
 	padding: 6px 12px;
 	font-size: 0.8rem;
-	border-radius: 8px;
+	border-radius: 999px;
 }
 
 .btn-icon {
@@ -472,7 +471,7 @@ p {
 .card {
 	background-color: var(--surface);
 	border: 1px solid var(--border);
-	border-radius: 16px;
+	border-radius: 22px;
 	box-shadow: var(--shadow-sm);
 	padding: 24px;
 	transition:
@@ -976,22 +975,22 @@ p {
 	}
 }
 
-@media (max-width: 1023px) {
+@media (width < 1024px) {
+	.app-body {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.content-container {
+		grid-column: 1;
+		padding: 24px 20px;
+	}
 	.sidebar-container {
+		position: fixed;
+		inset: var(--topbar-height) auto 0 0;
+		width: min(260px, calc(100% - 44px));
 		transform: translateX(-100%);
 	}
 	.sidebar-container.open {
-		transform: translateX(0);
 		box-shadow: var(--shadow-lg);
-	}
-	.main-wrapper {
-		margin-left: 0;
-	}
-	.topbar {
-		padding: 0 20px;
-	}
-	.content-container {
-		padding: 24px 20px;
 	}
 }
 

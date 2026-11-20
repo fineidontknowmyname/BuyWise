@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import Logo from './Logo.svelte';
 	import {
 		LayoutDashboard,
 		Sparkles,
@@ -11,15 +10,15 @@
 		Wallet,
 		UserRound,
 		Activity,
-		X
+		LogOut
 	} from '@lucide/svelte';
 
 	let {
 		isOpen = false,
-		onclose
+		onfollow
 	}: {
 		isOpen?: boolean;
-		onclose?: () => void;
+		onfollow?: () => void;
 	} = $props();
 
 	const financeLinks = [
@@ -47,193 +46,117 @@
 			(current === '/budget' || current === '/budgets' || current === '/categories')
 		)
 			return true;
-		return current === href || (href !== '/' && current.startsWith(href));
+		return current === href || (href !== '/' && current.startsWith(href + '/'));
 	}
 </script>
 
-<!-- Backdrop on mobile when drawer is open -->
-{#if isOpen}
-	<div class="sidebar-backdrop" role="presentation" onclick={onclose}></div>
-{/if}
-
-<aside class="sidebar-container" class:open={isOpen}>
-	<div class="sidebar-top">
-		<a href={resolve('/')} class="brand-link" onclick={onclose}>
-			<Logo size="md" showWordmark={true} />
-		</a>
-		{#if onclose}
-			<button type="button" class="mobile-close-btn" onclick={onclose} aria-label="Close menu">
-				<X size={20} />
-			</button>
-		{/if}
-	</div>
-
-	<nav class="sidebar-nav">
-		<div class="nav-section-title">Navigation</div>
+<aside id="app-navigation" class="sidebar-container" class:open={isOpen} inert={!isOpen}>
+	<a href={resolve('/')} class="sidebar-brand" onclick={onfollow}>
+		BuyWise<span>.</span>
+	</a>
+	<nav aria-label="Main navigation">
 		<ul class="nav-list">
 			{#each navItems as item (item.href)}
 				{@const active = isActive(item.href, item.exact)}
 				<li>
-					<a href={item.href} class="nav-link" class:active onclick={onclose}>
-						<span class="nav-icon">
-							<item.icon size={19} />
-						</span>
-						<span class="nav-label">{item.label}</span>
-						{#if active}
-							<span class="active-indicator"></span>
-						{/if}
+					<a
+						href={item.href}
+						class="nav-link"
+						class:active
+						aria-current={active ? 'page' : undefined}
+						onclick={onfollow}
+					>
+						<span class="nav-icon"><item.icon size={16} /></span>
+						{item.label}
 					</a>
-					{#if item.children && (active || item.children.some((child) => isActive(child.href)))}<ul
-							class="subnav"
-						>
-							{#each item.children as child (child.href)}<li>
+					{#if item.children && (active || item.children.some((child) => isActive(child.href)))}
+						<ul class="subnav">
+							{#each item.children as child (child.href)}
+								<li>
 									<a
 										class="nav-link"
 										class:active={isActive(child.href)}
+										aria-current={isActive(child.href) ? 'page' : undefined}
 										href={child.href}
-										onclick={onclose}>{child.label}</a
+										onclick={onfollow}
 									>
-								</li>{/each}
-						</ul>{/if}
+										{child.label}
+									</a>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				</li>
 			{/each}
 		</ul>
 	</nav>
 
-	<div class="sidebar-footer">
-		<a href={resolve('/')} class="health-pill" onclick={onclose}>
-			<Activity size={16} />
-			<span>System Health: Active</span>
-		</a>
-	</div>
+	<form method="POST" action="/sign-out">
+		<button type="submit" class="nav-link">
+			<span class="nav-icon"><LogOut size={16} /></span>
+			Sign out
+		</button>
+	</form>
 </aside>
 
 <style>
+	.sidebar-brand {
+		display: inline-flex;
+		padding: 3px 10px 16px;
+		font: 700 1.35rem var(--font-mono);
+	}
+	.sidebar-brand span {
+		color: var(--brand-dot);
+	}
+	.nav-list,
 	.subnav {
+		display: grid;
+		gap: 3px;
 		list-style: none;
-		padding: 0 0 0 1rem;
-		margin: 0;
 	}
-
-	.sidebar-backdrop {
-		position: fixed;
-		inset: 0;
-		background-color: rgba(11, 18, 32, 0.5);
-		backdrop-filter: blur(2px);
-		z-index: 39;
+	.subnav {
+		padding: 3px 0 3px 36px;
 	}
-
-	.sidebar-top {
-		height: 70px;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0 24px;
-		border-bottom: 1px solid var(--sidebar-border);
-	}
-
-	.brand-link {
-		display: flex;
-		align-items: center;
-		text-decoration: none;
-	}
-
-	.mobile-close-btn {
-		display: none;
-		color: var(--foreground-secondary);
-		padding: 6px;
-		border-radius: 8px;
-	}
-
-	.sidebar-nav {
-		flex: 1;
-		padding: 24px 16px;
-		overflow-y: auto;
-	}
-
-	.nav-section-title {
-		font-size: 0.72rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: var(--foreground-muted);
-		padding: 0 12px 10px 12px;
-	}
-
-	.nav-list {
-		list-style: none;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
 	.nav-link {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		padding: 10px 14px;
-		border-radius: 10px;
+		gap: 10px;
+		min-height: 40px;
+		padding: 6px 8px;
+		border: 1px solid transparent;
+		border-radius: 12px;
 		color: var(--foreground-secondary);
-		font-size: 0.92rem;
-		font-weight: 500;
-		transition: all 0.15s ease;
-		position: relative;
+		text-align: left;
+		transition:
+			background-color 0.2s,
+			color 0.2s,
+			border-color 0.2s;
 	}
-
-	.nav-link:hover {
-		background-color: var(--surface-hover);
-		color: var(--foreground);
-	}
-
+	.nav-link:hover,
 	.nav-link.active {
-		background-color: var(--sidebar-active-bg);
-		color: var(--sidebar-active-text);
+		background: var(--surface);
+		color: var(--foreground);
+		border-color: var(--border);
+	}
+	.nav-link.active {
 		font-weight: 600;
 	}
-
 	.nav-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
+		display: grid;
+		place-items: center;
+		width: 29px;
+		height: 29px;
+		flex: none;
+		border: 1px solid #333;
+		border-radius: 9px;
+		background: #0d0d0d;
+		color: var(--accent);
 	}
-
-	.active-indicator {
-		position: absolute;
-		right: 12px;
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background-color: var(--primary);
+	form {
+		margin-top: auto;
+		padding-top: 18px;
 	}
-
-	.sidebar-footer {
-		padding: 18px 20px;
-		border-top: 1px solid var(--sidebar-border);
-	}
-
-	.health-pill {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 0.8rem;
-		font-weight: 500;
-		color: var(--foreground-secondary);
-		padding: 8px 12px;
-		border-radius: 8px;
-		background-color: var(--surface-secondary);
-		border: 1px solid var(--border);
-		transition: all 0.15s ease;
-	}
-
-	.health-pill:hover {
-		color: var(--primary);
-		border-color: var(--primary);
-	}
-
-	@media (max-width: 1023px) {
-		.mobile-close-btn {
-			display: flex;
-		}
+	form button {
+		width: 100%;
 	}
 </style>

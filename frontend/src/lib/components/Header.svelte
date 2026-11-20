@@ -1,118 +1,81 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { Menu, X } from '@lucide/svelte';
+	import { resolve } from '$app/paths';
 	import ThemeToggle from './ThemeToggle.svelte';
-	import { Menu, ShieldCheck } from '@lucide/svelte';
+	import HeaderWeave from './HeaderWeave.svelte';
 
 	let {
-		ontoggleMobileMenu
-	}: {
-		ontoggleMobileMenu: () => void;
-	} = $props();
-
-	const pageTitles: Record<string, string> = {
-		'/': 'Overview',
-		'/ai': 'Financial Assistant',
-		'/activity': 'Activity',
-		'/profile': 'Profile',
-		'/goals': 'Purchase Goals',
-		'/products': 'Products & Prices',
-		'/simulator': 'Affordability Simulator',
-		'/reports': 'Financial Reports',
-		'/finances': 'My finances',
-		'/accounts': 'Accounts',
-		'/budget': 'Budget & Categories',
-		'/categories': 'Budget & Categories',
-		'/budgets': 'Budget & Categories',
-		'/health': 'System Health'
-	};
-
-	const currentTitle = $derived.by(() => {
-		const path = page.url.pathname;
-		if (pageTitles[path]) return pageTitles[path];
-		if (path.startsWith('/goals/')) return 'Goal Decision';
-		if (path.startsWith('/products/')) return 'Product Details';
-		if (path.startsWith('/accounts/')) return 'Account Details';
-		return 'Dashboard';
-	});
+		menuOpen,
+		reducedMotion = false,
+		ontoggle
+	}: { menuOpen: boolean; reducedMotion?: boolean; ontoggle: () => void } = $props();
 </script>
 
 <header class="topbar">
-	<div class="topbar-left">
-		<button
-			type="button"
-			class="btn-icon mobile-menu-btn"
-			onclick={ontoggleMobileMenu}
-			aria-label="Toggle navigation menu"
-		>
-			<Menu size={20} />
-		</button>
-		<div class="page-title-group">
-			<span class="page-title">{currentTitle}</span>
-		</div>
-	</div>
-
-	<div class="topbar-right">
-		<div class="status-indicator-badge">
-			<ShieldCheck size={16} class="status-shield" />
-			<span class="status-text">BuyWise Core</span>
-		</div>
-
-		<ThemeToggle />
-		<form method="POST" action="/sign-out">
-			<button type="submit" class="btn-icon">Sign out</button>
-		</form>
-	</div>
+	<HeaderWeave {reducedMotion} />
+	<button
+		id="navigation-toggle"
+		type="button"
+		class="btn-icon menu-toggle"
+		onclick={ontoggle}
+		aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+		aria-expanded={menuOpen}
+		aria-controls="app-navigation"
+	>
+		{#if menuOpen}<X size={21} />{:else}<Menu size={21} />{/if}
+	</button>
+	<a class="wordmark" href={resolve('/')}>
+		<strong>BuyWise<span>.</span></strong>
+		<small>Buy what you want. Without borrowing for it.</small>
+	</a>
+	<ThemeToggle />
 </header>
 
 <style>
-	.topbar-left {
-		display: flex;
-		align-items: center;
-		gap: 16px;
+	.menu-toggle,
+	.wordmark {
+		position: relative;
 	}
 
-	.mobile-menu-btn {
-		display: none;
-	}
-
-	.page-title {
-		font-size: 1.18rem;
-		font-weight: 700;
+	.menu-toggle {
+		flex: none;
+		width: 42px;
+		height: 42px;
+		background: var(--surface);
 		color: var(--foreground);
-		letter-spacing: -0.02em;
 	}
 
-	.topbar-right {
+	.wordmark {
 		display: flex;
-		align-items: center;
-		gap: 14px;
-	}
-
-	.status-indicator-badge {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 6px 12px;
-		border-radius: 8px;
-		background-color: var(--surface-secondary);
+		flex: 1;
+		min-width: 0;
+		align-items: baseline;
+		justify-content: center;
+		gap: 12px;
+		padding: 7px 12px;
 		border: 1px solid var(--border);
-		font-size: 0.8rem;
-		font-weight: 600;
+		border-radius: 9px;
+		background: color-mix(in srgb, var(--surface) 92%, transparent);
+		color: var(--foreground);
+		font-family: var(--font-mono);
+	}
+
+	.wordmark strong {
+		font-size: 1.2rem;
+		white-space: nowrap;
+	}
+	.wordmark strong span {
+		color: var(--brand-dot);
+	}
+	.wordmark small {
 		color: var(--foreground-secondary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	:global(.status-shield) {
-		color: var(--success);
-	}
-
-	@media (max-width: 1023px) {
-		.mobile-menu-btn {
-			display: inline-flex;
-		}
-	}
-
-	@media (max-width: 768px) {
-		.status-indicator-badge {
+	@media (max-width: 720px) {
+		.wordmark small {
 			display: none;
 		}
 	}

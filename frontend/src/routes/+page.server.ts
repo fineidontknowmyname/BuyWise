@@ -29,7 +29,15 @@ export const load: PageServerLoad = async ({ fetch }) => {
 		]);
 
 	const goals = goalsRes.ok ? goalsRes.data.filter((goal) => goal.status === 'active') : [];
-	const today = todayInIndia();
+	const now = new Date();
+	const today = todayInIndia(now);
+	const hour = Number(
+		new Intl.DateTimeFormat('en-GB', {
+			hour: '2-digit',
+			hourCycle: 'h23',
+			timeZone: 'Asia/Kolkata'
+		}).format(now)
+	);
 	const milestone =
 		goals
 			.filter((goal) => goal.targetDate && goal.targetDate >= today)
@@ -94,6 +102,7 @@ export const load: PageServerLoad = async ({ fetch }) => {
 
 	return {
 		today,
+		hour,
 		weeks: ledgerComplete ? weeks : null,
 		accountsAvailable: accountsRes.ok,
 		goalsAvailable: goalsRes.ok,

@@ -3,29 +3,50 @@
 	import { themeManager } from '#lib/stores/theme.svelte.js';
 </script>
 
-<button
-	type="button"
-	class="btn-icon theme-toggle"
-	onclick={() => themeManager.toggle()}
-	aria-label="Switch theme (currently {themeManager.isDark ? 'dark' : 'light'} mode)"
-	title="Switch to {themeManager.isDark ? 'light' : 'dark'} mode"
->
-	{#if themeManager.isDark}
-		<Sun size={19} />
-	{:else}
-		<Moon size={19} />
-	{/if}
-</button>
+<div class="theme-toggle" role="group" aria-label="Color theme">
+	<button
+		type="button"
+		aria-label="Dark theme"
+		aria-pressed={themeManager.isDark}
+		onclick={() => themeManager.set('dark')}
+	>
+		<Moon size={16} />
+	</button>
+	<button
+		type="button"
+		aria-label="Light theme"
+		aria-pressed={!themeManager.isDark}
+		onclick={() => themeManager.set('light')}
+	>
+		<Sun size={16} />
+	</button>
+</div>
 
 <style>
 	.theme-toggle {
 		position: relative;
-		transition:
-			transform 0.2s ease,
-			background-color 0.15s ease;
+		display: flex;
+		flex: none;
+		padding: 3px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: var(--surface);
 	}
 
-	.theme-toggle:active {
-		transform: scale(0.92);
+	button {
+		display: grid;
+		width: 36px;
+		height: 34px;
+		place-items: center;
+		border-radius: 999px;
+		color: var(--foreground-secondary);
+		transition:
+			background-color 0.2s,
+			color 0.2s;
+	}
+
+	button[aria-pressed='true'] {
+		background: var(--primary);
+		color: var(--primary-foreground);
 	}
 </style>
