@@ -15,6 +15,15 @@ type Store struct {
 	pool *pgxpool.Pool
 }
 
+func (s *Store) HasUpcomingPurchase(ctx context.Context, productID uuid.UUID, day string) (bool, error) {
+	var upcoming bool
+	err := database.Scoped(ctx, s.pool).QueryRow(ctx, `SELECT EXISTS (
+        SELECT 1 FROM goals.goals WHERE product_id = $1::uuid AND status = 'active'
+        AND target_date BETWEEN $2::date AND $2::date + 7
+    )`, productID.String(), day).Scan(&upcoming)
+	return upcoming, err
+}
+
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }

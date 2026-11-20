@@ -11,15 +11,19 @@ import (
 )
 
 type Handler struct {
-	service *Service
-	logger  *slog.Logger
+	service  *Service
+	logger   *slog.Logger
+	provider PriceProvider
 }
 
-func NewHandler(service *Service, logger *slog.Logger) *Handler {
-	return &Handler{service: service, logger: logger}
+func NewHandler(service *Service, logger *slog.Logger, provider PriceProvider) *Handler {
+	return &Handler{service: service, logger: logger, provider: provider}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
+	if store, ok := h.service.repo.(*Store); ok {
+		offerHandler{store: store, logger: h.logger, now: h.service.now, provider: h.provider}.register(mux)
+	}
 	mux.HandleFunc("POST /products", h.createProduct)
 	mux.HandleFunc("GET /products", h.listProducts)
 	mux.HandleFunc("GET /products/{id}", h.getProduct)
@@ -203,6 +207,10 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
 		Warnings:           req.Warnings,
 	}
 	updated, err := h.service.UpdateProduct(r.Context(), p)
+	if errors.Is(err, errVariantMismatch) {
+		httpjson.WriteError(w, http.StatusConflict, "variant_mismatch", "Create a separate product for a different variant while offers are tracked.")
+		return
+	}
 	if errors.Is(err, ErrProductNotFound) {
 		httpjson.WriteError(w, http.StatusNotFound, "product_not_found", "Product not found.")
 		return

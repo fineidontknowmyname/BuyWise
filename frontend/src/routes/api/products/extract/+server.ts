@@ -1,17 +1,19 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { extractProductFromUrl } from '#lib/server/products/linkExtractor.js';
+import { apiRequest } from '#lib/server/api.js';
+import { apiUrl } from '#lib/server/config.js';
 
 export const POST: RequestHandler = async ({ request, fetch }) => {
-	try {
-		const { url } = await request.json();
-		if (!url || typeof url !== 'string') {
-			return json({ error: 'A valid URL is required.' }, { status: 400 });
-		}
-
-		const extracted = await extractProductFromUrl(url, fetch);
-		return json(extracted);
-	} catch (err: unknown) {
-		const message = err instanceof Error ? err.message : 'Failed to extract product metadata.';
-		return json({ error: message }, { status: 500 });
+	const input = await request.json().catch(() => null);
+	if (typeof input?.url !== 'string') {
+		return json({ error: 'A supported HTTPS retailer link is required.' }, { status: 400 });
 	}
+	const result = await apiRequest<{ url: string; retailer: string }>(
+		fetch,
+		apiUrl(),
+		'/products/validate-listing',
+		{ method: 'POST', body: JSON.stringify({ url: input.url }) }
+	);
+	return result.ok
+		? json({ ...result.data, manualDetailsRequired: true })
+		: json({ error: result.error.message }, { status: result.status });
 };

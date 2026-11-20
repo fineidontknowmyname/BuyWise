@@ -12,3 +12,10 @@ export function todayInIndia(now: Date = new Date()): string {
 export function currentMonth(now: Date = new Date()): string {
 	return todayInIndia(now).slice(0, 7);
 }
+
+export function marketDate(now = new Date()): string {
+	return new Intl.DateTimeFormat('en-CA', {
+		timeZone: 'Asia/Kolkata',
+		dateStyle: 'short'
+	}).format(now);
+}

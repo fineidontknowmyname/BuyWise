@@ -33,6 +33,7 @@ type goalResponse struct {
 }
 
 type createRequest struct {
+	LegacySavedPaise int64   `json:"legacySavedPaise,omitempty"`
 	Name             string  `json:"name"`
 	TargetPricePaise int64   `json:"targetPricePaise,omitempty"`
 	SavedAmountPaise int64   `json:"savedAmountPaise,omitempty"`

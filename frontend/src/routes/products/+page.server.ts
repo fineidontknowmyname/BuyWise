@@ -2,6 +2,8 @@ import { fail, redirect } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
 import { apiRequest, type Product, type ProductStats } from '#lib/server/api.js';
 import { apiUrl } from '#lib/server/config.js';
+import { parseRupees } from '#lib/money.js';
+import { marketDate } from '#lib/dates.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ fetch }) => {
@@ -33,65 +35,46 @@ export const load: PageServerLoad = async ({ fetch }) => {
 export const actions: Actions = {
 	create: async ({ request, fetch }) => {
 		const form = await request.formData();
-		const name = String(form.get('name') ?? '').trim();
-		const brand = String(form.get('brand') ?? '').trim();
-		const model = String(form.get('model') ?? '').trim();
-		const category = String(form.get('category') ?? 'General').trim();
-		const url = String(form.get('url') ?? '').trim();
-		const imageUrl = String(form.get('imageUrl') ?? '').trim();
-		const retailer = String(form.get('retailer') ?? '').trim();
-		const notes = String(form.get('notes') ?? '').trim();
-
-		const currentPriceRupees = parseFloat(String(form.get('currentPrice') ?? '0'));
-		const targetPriceRupees = parseFloat(String(form.get('targetPrice') ?? '0'));
-
-		const currentPricePaise =
-			isNaN(currentPriceRupees) || currentPriceRupees < 0
-				? 0
-				: Math.round(currentPriceRupees * 100);
-		const targetPricePaise =
-			isNaN(targetPriceRupees) || targetPriceRupees < 0 ? 0 : Math.round(targetPriceRupees * 100);
-
-		if (!name) {
-			return fail(400, { error: 'Product name is required.' });
+		const field = (key: string) => String(form.get(key) ?? '').trim();
+		const variant = field('variant');
+		const url = field('url');
+		const retailer = field('retailer');
+		const seller = field('seller');
+		const price = field('currentPrice');
+		const target = field('targetPrice');
+		const itemPaise = price ? parseRupees(price) : null;
+		const maximumPaise = target ? parseRupees(target) : null;
+		if ((price && !itemPaise) || (target && !maximumPaise)) {
+			return fail(400, { error: 'Enter valid positive prices.' });
 		}
-
-		const createRes = await apiRequest<Product>(fetch, apiUrl(), '/products', {
+		const offer =
+			url || retailer || seller
+				? {
+						listingUrl: url,
+						retailer,
+						seller,
+						variant,
+						variantConfirmed: field('variantConfirmed') === 'yes'
+					}
+				: null;
+		const createRes = await apiRequest<Product>(fetch, apiUrl(), '/products/tracked', {
 			method: 'POST',
 			body: JSON.stringify({
-				name,
-				brand,
-				model,
-				category,
-				currentPricePaise,
-				targetPricePaise,
-				url,
-				imageUrl,
-				retailer,
-				notes
+				name: field('name'),
+				brand: field('brand'),
+				model: field('model'),
+				variant,
+				category: field('category') || 'General',
+				notes: field('notes'),
+				offer,
+				maximumPaise,
+				openingPrice: itemPaise
+					? { itemPaise, observedOn: marketDate(), availability: 'unknown' }
+					: null
 			})
 		});
-
-		if (!createRes.ok) {
-			return fail(createRes.status, { error: createRes.error.message });
-		}
-
-		const newProduct = createRes.data;
-
-		// Record initial price observation if price provided
-		if (currentPricePaise > 0) {
-			const today = new Date().toISOString().split('T')[0];
-			await apiRequest(fetch, apiUrl(), `/products/${newProduct.id}/prices`, {
-				method: 'POST',
-				body: JSON.stringify({
-					pricePaise: currentPricePaise,
-					observedOn: today,
-					source: retailer || 'Initial entry'
-				})
-			});
-		}
-
-		redirect(303, resolve('/products/[id]', { id: newProduct.id }));
+		if (!createRes.ok) return fail(createRes.status, { error: createRes.error.message });
+		redirect(303, resolve('/products/[id]/offers', { id: createRes.data.id }));
 	},
 
 	delete: async ({ request, fetch }) => {

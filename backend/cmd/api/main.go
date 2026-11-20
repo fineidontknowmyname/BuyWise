@@ -30,6 +30,10 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
+	return runWithPriceProvider(logger, nil)
+}
+
+func runWithPriceProvider(logger *slog.Logger, provider pricing.PriceProvider) error {
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
@@ -43,17 +47,34 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
+	if provider == nil && cfg.SerpAPIKey != "" {
+		provider = pricing.NewSerpAPI(pool, cfg.SerpAPIKey)
+	}
+	goalsStore := goals.NewStore(pool)
+	if provider != nil {
+		worker := pricing.NewRefreshWorker(pool, provider, time.Now).WithUpcomingPurchase(goalsStore.HasUpcomingPurchase)
+		workerDone := make(chan struct{})
+		go func() {
+			defer close(workerDone)
+			worker.Run(ctx, logger)
+		}()
+		defer func() {
+			stop()
+			<-workerDone
+		}()
+	}
 
 	server := &http.Server{
 		Addr: cfg.APIAddr,
 		Handler: app.NewHandler(app.Dependencies{
-			DB:          pool,
-			Identity:    identity.New(pool),
-			GoalsRepo:   goals.NewStore(pool),
-			FinanceRepo: finance.NewStore(pool),
-			PricingRepo: pricing.NewStore(pool),
-			Logger:      logger,
-			Now:         time.Now,
+			DB:            pool,
+			Identity:      identity.New(pool),
+			GoalsRepo:     goalsStore,
+			FinanceRepo:   finance.NewStore(pool),
+			PricingRepo:   pricing.NewStore(pool),
+			PriceProvider: provider,
+			Logger:        logger,
+			Now:           time.Now,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

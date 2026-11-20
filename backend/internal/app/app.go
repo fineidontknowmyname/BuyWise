@@ -14,13 +14,14 @@ import (
 )
 
 type Dependencies struct {
-	Identity    *identity.Handler
-	DB          httpserver.Pinger
-	GoalsRepo   goals.Repository
-	FinanceRepo finance.Repository
-	PricingRepo pricing.Repository
-	Logger      *slog.Logger
-	Now         func() time.Time
+	Identity      *identity.Handler
+	DB            httpserver.Pinger
+	GoalsRepo     goals.Repository
+	FinanceRepo   finance.Repository
+	PricingRepo   pricing.Repository
+	PriceProvider pricing.PriceProvider
+	Logger        *slog.Logger
+	Now           func() time.Time
 }
 
 func newDomainHandler(deps Dependencies) http.Handler {
@@ -43,7 +44,7 @@ func newDomainHandler(deps Dependencies) http.Handler {
 	modules := []httpserver.Module{
 		goals.NewHandler(goalService, deps.Logger),
 		finance.NewHandler(financeService, deps.Logger),
-		pricing.NewHandler(pricingService, deps.Logger),
+		pricing.NewHandler(pricingService, deps.Logger, deps.PriceProvider),
 		decision.NewHandler(decisionService, deps.Logger),
 	}
 	if goalsStore, ok := deps.GoalsRepo.(*goals.Store); ok {

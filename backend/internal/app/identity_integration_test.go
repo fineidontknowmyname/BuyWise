@@ -20,6 +20,12 @@ import (
 	"selfemi/internal/platform/identity"
 )
 
+type testOfferProvider func(context.Context, pricing.ProviderListing) (pricing.ObservedOfferPrice, error)
+
+func (f testOfferProvider) Observe(ctx context.Context, listing pricing.ProviderListing) (pricing.ObservedOfferPrice, error) {
+	return f(ctx, listing)
+}
+
 func TestIdentityIsolation(t *testing.T) {
 	dsn := os.Getenv("BUYWISE_IDENTITY_TEST_DSN")
 	if dsn == "" {
@@ -183,6 +189,77 @@ func TestIdentityIsolation(t *testing.T) {
 	request("PUT", lifecyclePath, first, `{"status":"active"}`, 409)
 	assertJSON(request("GET", planPath, first, "", 200), "fundedPaise", "80000")
 	assertJSON(request("GET", "/goals/"+purchase, first, "", 200), "savedAmountPaise", "0")
+	request("POST", "/products/validate-listing", first, `{"url":"https://127.0.0.1/product"}`, 400)
+	assertJSON(request("POST", "/products/validate-listing", first, `{"url":"https://www.amazon.in/dp/EXAMPLE?utm_source=test#price"}`, 200), "retailer", `"Amazon"`)
+	variant := field(request("POST", "/products/tracked", first, `{"name":"Notebook","brand":"Example","model":"A","variant":"16 GB"}`, 201), "id")
+	offerPath := "/products/" + variant + "/offers"
+	request("GET", offerPath, second, "", 404)
+	request("POST", offerPath, first, `{"retailer":"Store","variant":"8 GB","variantConfirmed":true}`, 409)
+	offerA := field(request("POST", offerPath, first, `{"listingUrl":"https://www.amazon.in/dp/EXAMPLE","seller":"Example seller","variant":"16 GB","variantConfirmed":true}`, 201), "id")
+	offerB := field(request("POST", offerPath, first, `{"retailer":"Local shop","variant":"16 GB","variantConfirmed":true}`, 201), "id")
+	request("POST", offerPath, first, `{"listingUrl":"https://amazon.in/dp/EXAMPLE?tag=demo","variant":"16 GB","variantConfirmed":true}`, 409)
+	request("PUT", "/products/"+variant, first, `{"name":"Notebook","brand":"Example","model":"A","variant":"8 GB"}`, 409)
+	request("GET", offerPath+"/"+offerA+"/history", second, "", 404)
+	request("PUT", "/products/"+variant+"/thresholds", first, `{"idealPaise":300000,"maximumPaise":200000}`, 400)
+	request("PUT", "/products/"+variant+"/thresholds", first, `{"idealPaise":90000,"goodPaise":100000,"maximumPaise":150000}`, 204)
+	assertJSON(request("GET", offerPath, first, "", 200), "maximumPaise", "150000")
+	record := `{"observedOn":"2020-01-01","itemPaise":100000,"taxPaise":0,"deliveryPaise":7000,"discountPaise":1000,"availability":"in_stock","sourceLabel":"Receipt"}`
+	request("POST", offerPath+"/"+offerA+"/observations", first, record, 201)
+	request("POST", offerPath+"/"+offerA+"/observations", first, record, 200)
+	history := request("GET", offerPath+"/"+offerA+"/history", first, "", 200)
+	assertJSON(history, "landedPaise", "106000")
+	assertJSON(history, "fetchedAt", "null")
+	assertJSON(history, "freshness", `"stale"`)
+	assertJSON(request("GET", offerPath+"/"+offerB+"/history", first, "", 200), "freshness", `"missing"`)
+	csv := `{"csv":"date,price,source\n2020-01-02,900,Receipt"}`
+	request("POST", offerPath+"/"+offerB+"/import", first, csv, 201)
+	request("POST", offerPath+"/"+offerB+"/import", first, csv, 200)
+	assertJSON(request("GET", offerPath+"/"+offerB+"/history", first, "", 200), "landedPaise", "null")
+	request("POST", offerPath+"/"+offerA+"/refresh", first, "", 503)
+	assertJSON(request("GET", offerPath+"/"+offerA+"/history", first, "", 200), "count", "1")
+	request("PUT", "/goals/"+id, first, `{"name":"First account only","targetPricePaise":9000000,"priority":"medium","productId":"`+variant+`"}`, 200)
+	assertJSON(request("GET", "/goals/"+id, first, "", 200), "productId", `"`+variant+`"`)
+	provider := testOfferProvider(func(context.Context, pricing.ProviderListing) (pricing.ObservedOfferPrice, error) {
+		return pricing.ObservedOfferPrice{}, pricing.ErrProviderRateLimited
+	})
+	app = NewHandler(Dependencies{
+		DB: pool, Identity: identity.New(pool), GoalsRepo: goals.NewStore(pool),
+		FinanceRepo: finance.NewStore(pool), PricingRepo: pricing.NewStore(pool),
+		PriceProvider: provider, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Now: time.Now,
+	})
+	refreshPath := offerPath + "/" + offerA + "/refresh"
+	job := field(request("POST", refreshPath, first, "", 202), "id")
+	if retry := field(request("POST", refreshPath, first, "", 202), "id"); retry != job {
+		t.Fatal("refresh retry duplicated an active job")
+	}
+	request("POST", refreshPath, second, "", 404)
+	if err := pricing.NewRefreshWorker(pool, provider, time.Now).ProcessNext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	history = request("GET", offerPath+"/"+offerA+"/history", first, "", 200)
+	assertJSON(history, "errorCode", `"provider_rate_limited"`)
+	assertJSON(history, "count", "1")
+	if _, err := pool.Exec(ctx, `UPDATE pricing.offer_refresh_jobs SET state = 'running', lease_token = uuidv7(),
+        lease_until = now() - interval '1 second' WHERE id = $1::uuid`, job); err != nil {
+		t.Fatal(err)
+	}
+	observed := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
+	observedOn := observed.In(time.FixedZone("IST", 19800)).Format(time.DateOnly)
+	restarted := pricing.NewRefreshWorker(pool, testOfferProvider(func(_ context.Context, listing pricing.ProviderListing) (pricing.ObservedOfferPrice, error) {
+		if listing.Variant != "16 GB" || listing.Seller != "Example seller" {
+			t.Fatalf("unexpected provider listing: %+v", listing)
+		}
+		return pricing.ObservedOfferPrice{ObservedOn: observedOn, ObservedAt: &observed,
+			SourceLabel: "Test provider", Availability: "in_stock", ItemPaise: 123456}, nil
+	}), time.Now)
+	if err := restarted.ProcessNext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	history = request("GET", offerPath+"/"+offerA+"/history", first, "", 200)
+	assertJSON(history, "state", `"succeeded"`)
+	assertJSON(history, "attempts", "2")
+	assertJSON(history, "source", `"provider"`)
+	assertJSON(history, "count", "2")
 	request("POST", "/auth/logout", first, "", 200)
 	request("GET", "/goals", first, "", 401)
 	retried := field(request("POST", "/auth/login", "", a, 200), "token")

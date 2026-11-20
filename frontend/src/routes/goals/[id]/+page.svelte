@@ -209,9 +209,6 @@
 	// Link product URL input
 	let linkProductUrl = $state('');
 
-	// Refresh price state
-	let isRefreshingPrice = $state(false);
-
 	// Computed figures
 	const currentPricePaise = $derived(
 		data.product?.currentPricePaise ?? data.goal?.targetPricePaise ?? 0
@@ -371,22 +368,12 @@
 
 				<!-- Action Buttons (Refresh, Edit, Upload Document) -->
 				<div class="product-actions-right">
-					<form method="POST" action="?/refreshPrice" class="inline-form">
-						<input type="hidden" name="productId" value={data.product.id} />
-						<input type="hidden" name="productUrl" value={data.product.url} />
-						<button
-							type="submit"
-							class="btn btn-secondary btn-sm"
-							disabled={isRefreshingPrice || !data.product.url}
-							onclick={() => (isRefreshingPrice = true)}
-							title={data.product.url
-								? 'Re-extract current price from retailer URL'
-								: 'Add a product URL first'}
-						>
-							<RefreshCw size={14} class={isRefreshingPrice ? 'animate-spin' : ''} />
-							<span>{isRefreshingPrice ? 'Refreshing...' : 'Refresh Price'}</span>
-						</button>
-					</form>
+					<a
+						class="btn btn-secondary btn-sm"
+						href={resolve('/products/[id]/offers', { id: data.product.id })}
+					>
+						Retailer offers
+					</a>
 
 					<button type="button" class="btn btn-secondary btn-sm" onclick={openEditProductModal}>
 						<Edit3 size={14} />
@@ -714,6 +701,19 @@
 							required
 							bind:value={linkProductUrl}
 						/>
+						<label
+							>Product name<input
+								class="form-input"
+								name="productName"
+								maxlength="200"
+								required
+							/></label
+						>
+						<label>Exact variant<input class="form-input" name="variant" maxlength="100" /></label>
+						<label
+							><input type="checkbox" name="variantConfirmed" value="yes" required /> The listing matches
+							this product and variant.</label
+						>
 						<button type="submit" class="btn btn-primary btn-sm mt-2">
 							<Sparkles size={14} />
 							<span>Analyze & Attach</span>

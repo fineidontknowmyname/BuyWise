@@ -9,7 +9,6 @@ import {
 	type DocumentUpload
 } from '#lib/server/api.js';
 import { apiUrl } from '#lib/server/config.js';
-import { extractProductFromUrl } from '#lib/server/products/engine.js';
 import { processDocumentUpload } from '#lib/server/documents/service.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -112,76 +111,6 @@ export const actions: Actions = {
 		}
 
 		return { success: true, updatedPrice: targetPriceRupees };
-	},
-
-	refreshPrice: async ({ request, fetch }) => {
-		const form = await request.formData();
-		const productId = String(form.get('productId') ?? '');
-		const productUrl = String(form.get('productUrl') ?? '');
-
-		if (!productId || !productUrl) {
-			return fail(400, { error: 'Product URL is required for live price refresh.' });
-		}
-
-		const base = apiUrl();
-		const prodRes = await apiRequest<Product>(fetch, base, `/products/${productId}`);
-		if (!prodRes.ok) {
-			return fail(prodRes.status, { error: 'Could not load linked product.' });
-		}
-
-		const existing = prodRes.data;
-
-		// Extract product from URL using hybrid engine
-		const extracted = await extractProductFromUrl(productUrl, fetch);
-
-		if (extracted.confidence === 'manual_fallback' || extracted.error) {
-			// CRITICAL: A failed refresh MUST NOT overwrite the last valid price with zero or empty
-			return fail(422, {
-				error: `Retailer refresh failed: ${extracted.error || 'Page could not be verified'}. Retained previous valid price.`
-			});
-		}
-
-		if (extracted.currentPricePaise > 0) {
-			// Update product current price & verified fields
-			await apiRequest(fetch, base, `/products/${productId}`, {
-				method: 'PUT',
-				body: JSON.stringify({
-					...existing,
-					currentPricePaise: extracted.currentPricePaise,
-					originalPricePaise: extracted.originalPricePaise || existing.originalPricePaise || 0,
-					discountPercent: extracted.discountPercent || existing.discountPercent || 0,
-					name: extracted.name || existing.name,
-					brand: extracted.brand || existing.brand,
-					model: extracted.model || existing.model,
-					variant: extracted.variant || existing.variant,
-					retailer: extracted.retailer || existing.retailer,
-					specifications: { ...existing.specifications, ...extracted.specifications },
-					lastRetrievedAt: new Date().toISOString(),
-					verificationStatus: 'verified'
-				})
-			});
-
-			// Record new price observation
-			const today = new Date().toISOString().split('T')[0];
-			await apiRequest(fetch, base, `/products/${productId}/prices`, {
-				method: 'POST',
-				body: JSON.stringify({
-					pricePaise: extracted.currentPricePaise,
-					observedOn: today,
-					retailer: extracted.retailer || existing.retailer,
-					source: extracted.retailer || 'live_refresh',
-					sourceRef: productUrl,
-					provenance: 'url_extraction'
-				})
-			});
-
-			return { success: true, refreshedPrice: extracted.currentPricePaise / 100 };
-		}
-
-		return fail(422, {
-			error:
-				'Product page was accessed, but no verified price was found. Previous valid price was preserved.'
-		});
 	},
 
 	updateProductDetails: async ({ params, request, fetch }) => {
@@ -503,34 +432,37 @@ export const actions: Actions = {
 		const productUrl = String(form.get('productUrl') ?? '').trim();
 		const productName = String(form.get('productName') ?? '').trim();
 
+		const variant = String(form.get('variant') ?? '').trim();
+		if (form.get('variantConfirmed') !== 'yes')
+			return fail(400, { error: 'Confirm the listing matches the product variant.' });
 		if (!productUrl) {
 			return fail(400, { error: 'Product URL is required.' });
 		}
 
 		const base = apiUrl();
-		const extracted = await extractProductFromUrl(productUrl, fetch);
-
-		const name = productName || extracted.name || 'Tracked Product';
-		const currentPricePaise = extracted.currentPricePaise || 0;
-
-		const prodRes = await apiRequest<Product>(fetch, base, '/products', {
+		if (!productName) return fail(400, { error: 'Enter the product’s exact name or variant.' });
+		const listing = await apiRequest<{ url: string; retailer: string }>(
+			fetch,
+			base,
+			'/products/validate-listing',
+			{
+				method: 'POST',
+				body: JSON.stringify({ url: productUrl })
+			}
+		);
+		if (!listing.ok) return fail(listing.status, { error: listing.error.message });
+		const prodRes = await apiRequest<Product>(fetch, base, '/products/tracked', {
 			method: 'POST',
 			body: JSON.stringify({
-				name,
-				brand: extracted.brand || '',
-				model: extracted.model || '',
-				variant: extracted.variant || '',
+				name: productName,
 				category: 'Shopping',
-				currentPricePaise,
-				originalPricePaise: extracted.originalPricePaise || 0,
-				targetPricePaise: currentPricePaise,
-				specifications: extracted.specifications || {},
-				url: productUrl,
-				imageUrl: extracted.imageUrl || '',
-				retailer: extracted.retailer || 'Online Store',
-				notes: '',
-				source: 'url_extraction',
-				verificationStatus: extracted.confidence === 'high' ? 'verified' : 'unverified'
+				variant,
+				offer: {
+					variant,
+					listingUrl: listing.data.url,
+					retailer: listing.data.retailer,
+					variantConfirmed: true
+				}
 			})
 		});
 
@@ -540,16 +472,12 @@ export const actions: Actions = {
 
 		// Update goal with new productId
 		const goalRes = await apiRequest<Goal>(fetch, base, `/goals/${goalId}`);
-		if (goalRes.ok) {
-			await apiRequest(fetch, base, `/goals/${goalId}`, {
-				method: 'PUT',
-				body: JSON.stringify({
-					...goalRes.data,
-					productId: prodRes.data.id,
-					targetPricePaise: goalRes.data.targetPricePaise || currentPricePaise
-				})
-			});
-		}
+		if (!goalRes.ok) return fail(goalRes.status, { error: goalRes.error.message });
+		const updated = await apiRequest(fetch, base, `/goals/${goalId}`, {
+			method: 'PUT',
+			body: JSON.stringify({ ...goalRes.data, productId: prodRes.data.id })
+		});
+		if (!updated.ok) return fail(updated.status, { error: updated.error.message });
 
 		return { success: true };
 	}

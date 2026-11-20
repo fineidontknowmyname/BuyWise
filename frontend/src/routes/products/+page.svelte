@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { enhance } from '$app/forms';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { formatRupees } from '#lib/money.js';
 	import Modal from '#lib/components/Modal.svelte';
@@ -19,7 +20,7 @@
 	} from '@lucide/svelte';
 	import type { PageProps } from './$types';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 
 	let searchQuery = $state('');
 	let selectedCategory = $state('all');
@@ -64,21 +65,11 @@
 			}
 
 			const data = await res.json();
-			formName = data.name || '';
-			formBrand = data.brand || '';
-			formModel = data.model || '';
-			formCategory = data.category || 'Electronics';
-			formRetailer = data.retailer || '';
-			formCurrentPrice = data.currentPricePaise ? (data.currentPricePaise / 100).toString() : '';
-			formUrl = data.url || extractUrl;
-			formImageUrl = data.imageUrl || '';
-			if (!formTargetPrice && data.currentPricePaise) {
-				// Suggest a 10% lower target price as a default
-				formTargetPrice = Math.round((data.currentPricePaise * 0.9) / 100).toString();
-			}
-			activeTab = 'manual'; // switch to review form
+			formRetailer = data.retailer;
+			formUrl = data.url;
+			activeTab = 'manual';
 		} catch (err: unknown) {
-			extractError = err instanceof Error ? err.message : 'Could not fetch metadata from the URL.';
+			extractError = err instanceof Error ? err.message : 'Could not validate the retailer link.';
 		} finally {
 			isExtracting = false;
 		}
@@ -235,7 +226,7 @@
 						</div>
 
 						<h3 class="product-name" title={product.name}>
-							<a href={resolve('/products/[id]', { id: product.id })}>
+							<a href={resolve('/products/[id]/offers', { id: product.id })}>
 								{product.name}
 							</a>
 						</h3>
@@ -248,8 +239,12 @@
 
 						<div class="pricing-row">
 							<div class="price-block">
-								<span class="price-label">Current</span>
-								<span class="price-val">{formatRupees(product.currentPricePaise)}</span>
+								<span class="price-label">Earlier product price</span>
+								<span class="price-val"
+									>{product.currentPricePaise > 0
+										? formatRupees(product.currentPricePaise)
+										: 'See offers'}</span
+								>
 							</div>
 
 							{#if product.targetPricePaise > 0}
@@ -269,7 +264,7 @@
 
 						<div class="card-footer">
 							<a
-								href={resolve('/products/[id]', { id: product.id })}
+								href={resolve('/products/[id]/offers', { id: product.id })}
 								class="btn btn-secondary btn-sm"
 							>
 								<span>View Details</span>
@@ -304,7 +299,7 @@
 			onclick={() => (activeTab = 'url')}
 		>
 			<Sparkles size={16} />
-			<span>Extract from Web Link</span>
+			<span>Use retailer link</span>
 		</button>
 		<button
 			type="button"
@@ -320,8 +315,7 @@
 	{#if activeTab === 'url'}
 		<div class="extractor-view">
 			<p class="extractor-hint">
-				Paste any product link (Amazon, Flipkart, Apple, Croma, etc.) and BuyWise will automatically
-				extract the name, image, retailer, and price.
+				Paste the retailer listing URL, then enter and confirm the exact product variant.
 			</p>
 
 			<div class="form-group">
@@ -354,10 +348,10 @@
 				>
 					{#if isExtracting}
 						<span class="spinner"></span>
-						<span>Extracting Details...</span>
+						<span>Checking link...</span>
 					{:else}
 						<Sparkles size={16} />
-						<span>Fetch Product Info</span>
+						<span>Check retailer link</span>
 					{/if}
 				</button>
 			</div>
@@ -365,7 +359,8 @@
 	{/if}
 
 	{#if activeTab === 'manual'}
-		<form method="POST" action="?/create" class="product-form">
+		<form method="POST" action="?/create" class="product-form" use:enhance>
+			{#if form?.error}<p role="alert">{form.error}</p>{/if}
 			<input type="hidden" name="url" value={formUrl} />
 			<input type="hidden" name="imageUrl" value={formImageUrl} />
 
@@ -408,6 +403,26 @@
 			</div>
 
 			<div class="form-grid-2">
+				<label class="form-group"
+					>Exact variant <input
+						class="form-input"
+						name="variant"
+						maxlength="100"
+						placeholder="e.g. 256 GB, black"
+					/></label
+				>
+				<label class="form-group"
+					>Seller <input class="form-input" name="seller" maxlength="150" /></label
+				>
+			</div>
+			<label class="form-group"
+				><span
+					><input type="checkbox" name="variantConfirmed" value="yes" /> If adding a listing, I confirmed
+					it matches this variant.</span
+				></label
+			>
+
+			<div class="form-grid-2">
 				<div class="form-group">
 					<label for="category" class="form-label">Category</label>
 					<input
@@ -434,7 +449,7 @@
 
 			<div class="form-grid-2">
 				<div class="form-group">
-					<label for="currentPrice" class="form-label">Current Price (₹)</label>
+					<label for="currentPrice" class="form-label">Observed item price (INR)</label>
 					<input
 						id="currentPrice"
 						name="currentPrice"
@@ -447,7 +462,7 @@
 					/>
 				</div>
 				<div class="form-group">
-					<label for="targetPrice" class="form-label">Target / Alert Price (₹)</label>
+					<label for="targetPrice" class="form-label">Maximum price (INR)</label>
 					<input
 						id="targetPrice"
 						name="targetPrice"

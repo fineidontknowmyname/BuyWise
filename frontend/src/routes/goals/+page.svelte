@@ -24,12 +24,7 @@
 	let formName = $state('');
 	let formProductUrl = $state('');
 	let formProductName = $state('');
-	let formRetailer = $state('');
-	let formImageUrl = $state('');
-	let formBrand = $state('');
-	let formModel = $state('');
 	let formVariant = $state('');
-	let formSpecs = $state('{}');
 	let formTargetPrice = $state('');
 	let formPriority = $state('medium');
 	let formTargetDate = $state('');
@@ -38,19 +33,7 @@
 
 	// Product extraction state
 	let isExtracting = $state(false);
-	let extractedData = $state<{
-		name: string;
-		brand?: string;
-		model?: string;
-		variant?: string;
-		currentPricePaise: number;
-		originalPricePaise?: number;
-		specifications?: Record<string, string>;
-		retailer: string;
-		imageUrl: string;
-		confidence: string;
-		error?: string;
-	} | null>(null);
+	let extractedData = $state<{ url: string; retailer: string } | null>(null);
 	let extractError = $state('');
 
 	async function analyzeProductUrl() {
@@ -70,39 +53,16 @@
 
 			const data = await res.json();
 			if (!res.ok) {
-				extractError = data.error || 'Could not extract product details.';
+				extractError = data.error || 'Could not validate the retailer link.';
 				return;
 			}
 
 			extractedData = data;
+			formProductUrl = data.url;
 		} catch (err: unknown) {
-			extractError =
-				err instanceof Error ? err.message : 'Failed to reach product extraction service.';
+			extractError = err instanceof Error ? err.message : 'Could not validate the retailer link.';
 		} finally {
 			isExtracting = false;
-		}
-	}
-
-	function applyExtractedProduct() {
-		if (!extractedData) return;
-		if (extractedData.name) {
-			formProductName = extractedData.name;
-			if (!formName) {
-				formName = `Buy ${extractedData.name}`;
-			}
-		}
-		if (extractedData.brand) formBrand = extractedData.brand;
-		if (extractedData.model) formModel = extractedData.model;
-		if (extractedData.variant) formVariant = extractedData.variant;
-		if (extractedData.specifications) formSpecs = JSON.stringify(extractedData.specifications);
-		if (extractedData.currentPricePaise > 0) {
-			formTargetPrice = (extractedData.currentPricePaise / 100).toString();
-		}
-		if (extractedData.retailer) {
-			formRetailer = extractedData.retailer;
-		}
-		if (extractedData.imageUrl) {
-			formImageUrl = extractedData.imageUrl;
 		}
 	}
 
@@ -113,7 +73,6 @@
 			if (prod) {
 				if (!formName) formName = `Buy ${prod.name}`;
 				formProductName = prod.name;
-				formRetailer = prod.retailer;
 				formProductUrl = prod.url;
 				formTargetPrice = (
 					prod.targetPricePaise || prod.currentPricePaise
@@ -343,23 +302,21 @@
 				>
 					{#if isExtracting}
 						<Clock size={15} class="animate-spin" />
-						<span>Analyzing...</span>
+						<span>Checking link...</span>
 					{:else}
 						<Sparkles size={15} />
-						<span>Analyze Product</span>
+						<span>Check retailer link</span>
 					{/if}
 				</button>
 			</div>
-			<span class="field-hint"
-				>Paste an e-commerce link to extract verified title and price automatically.</span
-			>
+			<span class="field-hint">Add a supported retailer link and confirm the exact variant.</span>
 		</div>
 
 		<!-- Product Extraction Result Banner / User Confirmation -->
 		{#if isExtracting}
 			<div class="extract-loading-box">
 				<Clock size={16} class="animate-spin" />
-				<span>Checking retailer page and validating structured product metadata...</span>
+				<span>Checking the retailer link...</span>
 			</div>
 		{:else if extractError}
 			<div class="extract-error-box">
@@ -367,57 +324,35 @@
 				<span>{extractError} (You can enter product details manually below).</span>
 			</div>
 		{:else if extractedData}
-			<div class="extracted-preview-box">
-				<div class="preview-header">
-					<div class="preview-badge-row">
-						<span
-							class="badge"
-							class:badge-success={extractedData.confidence === 'high'}
-							class:badge-warning={extractedData.confidence === 'medium'}
-							class:badge-neutral={extractedData.confidence === 'unverified'}
-						>
-							{extractedData.confidence === 'high'
-								? 'Verified Retailer Price'
-								: extractedData.confidence === 'medium'
-									? 'Detected Price'
-									: 'Unverified Price'}
-						</span>
-						{#if extractedData.retailer}
-							<span class="preview-retailer">{extractedData.retailer}</span>
-						{/if}
-					</div>
-					<button type="button" class="btn btn-sm btn-accent" onclick={applyExtractedProduct}>
-						Confirm & Use Details
-					</button>
-				</div>
-				<div class="preview-body">
-					{#if extractedData.imageUrl}
-						<img src={extractedData.imageUrl} alt={extractedData.name} class="preview-thumb" />
-					{/if}
-					<div class="preview-info">
-						<strong class="preview-name">{extractedData.name}</strong>
-						{#if extractedData.currentPricePaise > 0}
-							<div class="preview-price tabular-nums">
-								{formatRupees(extractedData.currentPricePaise)}
-							</div>
-						{:else}
-							<div class="text-muted text-xs">
-								Price could not be verified automatically. Enter below.
-							</div>
-						{/if}
-					</div>
-				</div>
-			</div>
+			<p role="status">
+				Link validated for {extractedData.retailer}. Check the listing and enter the exact variant.
+			</p>
 		{/if}
 
-		<!-- Hidden fields populated from extraction if confirmed -->
-		<input type="hidden" name="productName" value={formProductName} />
-		<input type="hidden" name="retailer" value={formRetailer} />
-		<input type="hidden" name="imageUrl" value={formImageUrl} />
-		<input type="hidden" name="brand" value={formBrand} />
-		<input type="hidden" name="model" value={formModel} />
-		<input type="hidden" name="variant" value={formVariant} />
-		<input type="hidden" name="specifications" value={formSpecs} />
+		<div class="form-grid-2">
+			<label class="form-group"
+				>Product name<input
+					class="input"
+					name="productName"
+					maxlength="200"
+					bind:value={formProductName}
+				/></label
+			>
+			<label class="form-group"
+				>Exact variant<input
+					class="input"
+					name="variant"
+					maxlength="100"
+					bind:value={formVariant}
+				/></label
+			>
+		</div>
+		{#if formProductUrl && !formProductId}
+			<label
+				><input type="checkbox" name="variantConfirmed" value="yes" required /> The listing matches this
+				product and variant.</label
+			>
+		{/if}
 
 		{#if data.products.length > 0}
 			<div class="form-group">

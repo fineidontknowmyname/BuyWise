@@ -202,6 +202,9 @@
 			</div>
 
 			<h1 class="hero-title">{data.product.name}</h1>
+			<a class="btn btn-primary" href={resolve('/products/[id]/offers', { id: data.product.id })}
+				>Retailer offers and price history</a
+			>
 			{#if data.product.brand || data.product.model}
 				<p class="hero-specs">
 					{[data.product.brand, data.product.model].filter(Boolean).join(' • ')}
@@ -210,8 +213,12 @@
 
 			<div class="hero-pricing">
 				<div class="hero-price-item">
-					<span class="hero-price-label">Current Price</span>
-					<span class="hero-price-val">{formatRupees(data.product.currentPricePaise)}</span>
+					<span class="hero-price-label">Earlier product-level price</span>
+					<span class="hero-price-val"
+						>{data.product.currentPricePaise > 0
+							? formatRupees(data.product.currentPricePaise)
+							: 'Unavailable'}</span
+					>
 				</div>
 
 				{#if data.product.targetPricePaise > 0}

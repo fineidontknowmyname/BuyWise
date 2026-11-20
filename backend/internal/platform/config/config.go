@@ -1,6 +1,9 @@
 package config
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 const (
 	DefaultAPIAddr       = "127.0.0.1:8080"
@@ -13,6 +16,7 @@ type Config struct {
 	APIAddr       string
 	DatabaseURL   string
 	MigrationsDir string
+	SerpAPIKey    string
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -20,6 +24,7 @@ func Load(getenv func(string) string) (Config, error) {
 		APIAddr:       valueOr(getenv("API_ADDR"), DefaultAPIAddr),
 		DatabaseURL:   getenv("DATABASE_URL"),
 		MigrationsDir: valueOr(getenv("MIGRATIONS_DIR"), DefaultMigrationsDir),
+		SerpAPIKey:    strings.TrimSpace(getenv("SERPAPI_API_KEY")),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, ErrMissingDatabaseURL
