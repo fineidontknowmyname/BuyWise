@@ -95,7 +95,7 @@ Migration `0016` adds the inbox. Ingestion stores the source app, date, amount, 
 
 ## Financial assistant
 
-Open **Financial Assistant** and select a question. The page reads existing purchase goals, plan projections, saved decisions, retailer offer history, monthly budgets, and financial profile estimates. Each answer links back to its BuyWise records. Reports, the simulator, and the product page use the same assistant. Create and edit purchase goals through **Purchase Goals**.
+Open **Financial Assistant** to type a question, ask a follow-up, or use a suggested question. Free-text questions can compare two named goals and estimate a higher monthly contribution for an active goal. The page reads existing purchase goals, plan projections, saved decisions, retailer offer history, monthly budgets, and financial profile estimates. Each answer links back to its BuyWise records. Reports, the simulator, and the product page use the same assistant. Create and edit purchase goals through **Purchase Goals**.
 
 `POST /api/ai/chat` is served by the SvelteKit app, normally on port `5173`. It accepts a signed-in browser session or a BuyWise bearer session for native clients. Browser requests with a session cookie require the app's origin. The request body is JSON.
 
@@ -105,9 +105,9 @@ Open **Financial Assistant** and select a question. The page reads existing purc
 | `goal`, `decision` | `goalId` |
 | `price` | `productId` |
 
-Responses contain `title`, `facts`, `sources`, `explanation`, and `mode`. `ai_assisted` means Groq prioritized statements written by BuyWise. BuyWise renders those statements and the original records. `buywise` means the explanation uses BuyWise's default order. The optional `fallback` field distinguishes missing AI configuration from a temporary provider failure. A missing or inaccessible record returns `404`, and a source API failure returns `503`.
+Responses contain `title`, `facts`, `sources`, `explanation`, and `mode`. `ai_assisted` means Groq classified the free-text question or prioritized statements written by BuyWise. BuyWise renders those statements and the original records. `buywise` means the explanation uses BuyWise's default order. The optional `fallback` field distinguishes missing AI configuration from a temporary provider failure. A missing or inaccessible record returns `404`, and a source API failure returns `503`.
 
-Assistant history lives in the page for the current visit. BuyWise keeps no stored transcript. The provider receives only the selected topic and qualitative statements. Account details, record titles, IDs, transaction notes, and financial figures stay within BuyWise. The application logs only the topic, outcome, fact count, and elapsed time for answered requests. The endpoint limits requests per signed-in user, and the Groq call has a bounded timeout and retry. The assistant works without a Groq key and requires no database migration.
+Assistant history lives in the page for the current visit. BuyWise keeps no stored transcript. Suggested questions send the selected topic and qualitative statements to Groq. Free-text chat can send the current and previous user questions for classification. BuyWise retrieves linked records and calculates scenario figures locally. Avoid typing sensitive details into chat. The application logs only the topic, outcome, fact count, and elapsed time for answered requests. The endpoint limits requests per signed-in user, and the Groq call has a bounded timeout and retry. The assistant works without a Groq key and requires no database migration.
 
 ## Overview, activity, and profile
 

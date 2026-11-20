@@ -52,7 +52,7 @@
 		{#each answer.explanation as line, index (index)}<li>{line}</li>{/each}
 	</ul>
 	<nav aria-label="Source records">
-		{#each answer.sources as source (source.kind)}<a href={sourceLink(source)}
+		{#each answer.sources as source (source.kind + sourceLink(source))}<a href={sourceLink(source)}
 				>{labels[source.kind]}</a
 			>{/each}
 	</nav>

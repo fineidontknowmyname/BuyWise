@@ -23,7 +23,8 @@ export type AssistantAnswer = {
 	fallback?: 'not_configured' | 'temporarily_unavailable';
 };
 export async function askAssistant(
-	input: AssistantRequest,
+	input:
+		AssistantRequest | { message: string; previous?: string; goalId?: string; productId?: string },
 	signal?: AbortSignal
 ): Promise<AssistantAnswer> {
 	const response = await fetch(resolve('/api/ai/chat'), {

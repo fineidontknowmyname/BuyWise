@@ -147,6 +147,8 @@ export async function assistantContext(
 				complete: true,
 				facts: [
 					fact('Goal status', goal.status ?? 'Unavailable'),
+					fact('Priority', goal.priority ?? 'Unset'),
+					fact('Target date', goal.targetDate ?? 'Unset'),
 					fact('Target', goal.targetPricePaise ? money(goal.targetPricePaise) : 'Unset'),
 					fact('Total earmarked contributions', money(plan.fundedPaise)),
 					...(active

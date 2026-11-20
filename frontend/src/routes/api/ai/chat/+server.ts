@@ -7,6 +7,7 @@ import {
 } from '#lib/assistant.js';
 import { AssistantDataError, assistantContext } from '#lib/server/ai/assistantContext.js';
 import { applyExplanationOrder, groqAssistant } from '#lib/server/ai/assistantProvider.js';
+import { conversationAnswer, type Conversation } from '#lib/server/ai/assistantConversation.js';
 import { apiUrl, groqApiKey } from '#lib/server/config.js';
 
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
@@ -25,7 +26,7 @@ function allowRequest(userId: string) {
 	return true;
 }
 
-async function parseRequest(request: Request): Promise<AssistantRequest | null> {
+async function parseRequest(request: Request): Promise<AssistantRequest | Conversation | null> {
 	const reader = request.body?.getReader();
 	if (!reader) return null;
 	const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -36,13 +37,29 @@ async function parseRequest(request: Request): Promise<AssistantRequest | null> 
 			const chunk = await reader.read();
 			if (chunk.done) break;
 			size += chunk.value.length;
-			if (size > 2048) {
+			if (size > 8192) {
 				void reader.cancel().catch(() => {});
 				return null;
 			}
 			text += decoder.decode(chunk.value, { stream: true });
 		}
-		const value: unknown = JSON.parse(text + decoder.decode());
+		const parsed: unknown = JSON.parse(text + decoder.decode());
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+		const value = parsed as Record<string, unknown>;
+		if (typeof value.message === 'string') {
+			const message = value.message.trim();
+			if (!message || message.length > 1000) return null;
+			return {
+				message,
+				previous: typeof value.previous === 'string' ? value.previous.slice(0, 1000) : undefined,
+				goalId:
+					typeof value.goalId === 'string' && uuid.test(value.goalId) ? value.goalId : undefined,
+				productId:
+					typeof value.productId === 'string' && uuid.test(value.productId)
+						? value.productId
+						: undefined
+			};
+		}
 		if (
 			!value ||
 			typeof value !== 'object' ||
@@ -75,18 +92,23 @@ export const POST: RequestHandler = async ({ locals, request, fetch }) => {
 	const question = await parseRequest(request);
 	if (!question)
 		return json(
-			{ error: 'Choose a supported topic and, where required, a saved goal or product.' },
+			{ error: 'Enter a question of up to 1,000 characters or choose a supported topic.' },
 			{ status: 400 }
 		);
 	const started = Date.now();
 	const audit = (outcome: string, factCount = 0) =>
 		console.info('buywise.assistant', {
-			topic: question.topic,
+			topic: 'message' in question ? 'conversation' : question.topic,
 			outcome,
 			factCount,
 			durationMs: Date.now() - started
 		});
 	try {
+		if ('message' in question) {
+			const answer = await conversationAnswer(question, fetch, apiUrl(), request.signal);
+			audit(answer.mode, answer.facts.length);
+			return json(answer);
+		}
 		const { points, complete, ...facts } = await assistantContext(question, fetch, apiUrl());
 		const answer: AssistantAnswer = { ...facts, explanation: points, mode: 'buywise' };
 		if (complete && points.length > 1) {
