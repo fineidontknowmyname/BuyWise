@@ -2,6 +2,8 @@
 	import { resolve } from '$app/paths';
 	import Modal from '#lib/components/Modal.svelte';
 	import { toast } from '#lib/stores/toast.svelte.js';
+	import { todayInIndia } from '#lib/dates.js';
+	import { parseRupees } from '#lib/money.js';
 	import type { Account, Category } from '#lib/server/api.js';
 	import { Sparkles, CheckCircle2 } from '@lucide/svelte';
 
@@ -23,12 +25,16 @@
 	let isParsing = $state(false);
 	let isSubmitting = $state(false);
 	let parseError = $state('');
+	let submissionKey = '';
+	const expenseCategories = $derived(
+		categories.filter((category) => category.kind === 'expense' && !category.archived)
+	);
 
 	// Structured form fields
 	let selectedAccountId = $state('');
 	let selectedCategoryId = $state('');
 	let amountRupees = $state('');
-	let occurredOn = $state(new Date().toISOString().split('T')[0]);
+	let occurredOn = $state(todayInIndia());
 	let note = $state('');
 
 	// When accounts or categories change, initialize defaults
@@ -36,9 +42,8 @@
 		if (accounts.length > 0 && !selectedAccountId) {
 			selectedAccountId = accounts[0].id;
 		}
-		if (categories.length > 0 && !selectedCategoryId) {
-			const firstExpense = categories.find((c) => c.kind === 'expense') || categories[0];
-			selectedCategoryId = firstExpense.id;
+		if (!expenseCategories.some((category) => category.id === selectedCategoryId)) {
+			selectedCategoryId = expenseCategories[0]?.id ?? '';
 		}
 	});
 
@@ -81,8 +86,9 @@
 
 	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
-		const rupees = parseFloat(amountRupees);
-		if (isNaN(rupees) || rupees <= 0) {
+		if (isSubmitting || isParsing) return;
+		const amountPaise = parseRupees(amountRupees);
+		if (!amountPaise) {
 			toast.error('Please enter a valid positive amount.');
 			return;
 		}
@@ -96,14 +102,15 @@
 		}
 
 		isSubmitting = true;
+		submissionKey ||= crypto.randomUUID();
 		try {
 			const res = await fetch(resolve('/api/transactions/quick'), {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: { 'Content-Type': 'application/json', 'Idempotency-Key': submissionKey },
 				body: JSON.stringify({
 					accountId: selectedAccountId,
 					categoryId: selectedCategoryId,
-					amountPaise: Math.round(rupees * 100),
+					amountPaise,
 					occurredOn,
 					note
 				})
@@ -111,6 +118,7 @@
 
 			if (!res.ok) {
 				const err = await res.json().catch(() => ({}));
+				if (err.code === 'idempotency_conflict') submissionKey = '';
 				throw new Error(err.error || 'Failed to record expense.');
 			}
 
@@ -118,6 +126,7 @@
 			// Reset form
 			promptText = '';
 			amountRupees = '';
+			submissionKey = '';
 			note = '';
 			if (onsuccess) onsuccess();
 			if (onclose) onclose();
@@ -173,9 +182,7 @@
 					<label for="exp-amount" class="form-label">Amount (₹) *</label>
 					<input
 						id="exp-amount"
-						type="number"
-						step="0.01"
-						min="0.01"
+						inputmode="decimal"
 						required
 						placeholder="e.g. 450"
 						bind:value={amountRupees}
@@ -185,7 +192,14 @@
 
 				<div class="form-group">
 					<label for="exp-date" class="form-label">Date *</label>
-					<input id="exp-date" type="date" required bind:value={occurredOn} class="form-input" />
+					<input
+						id="exp-date"
+						type="date"
+						max={todayInIndia()}
+						required
+						bind:value={occurredOn}
+						class="form-input"
+					/>
 				</div>
 			</div>
 
@@ -193,8 +207,8 @@
 				<div class="form-group">
 					<label for="exp-category" class="form-label">Category *</label>
 					<select id="exp-category" bind:value={selectedCategoryId} class="form-input" required>
-						{#each categories as cat (cat.id)}
-							<option value={cat.id}>{cat.name} ({cat.kind})</option>
+						{#each expenseCategories as cat (cat.id)}
+							<option value={cat.id}>{cat.name}</option>
 						{/each}
 					</select>
 				</div>
@@ -215,6 +229,7 @@
 					id="exp-note"
 					type="text"
 					placeholder="Optional note"
+					maxlength="500"
 					bind:value={note}
 					class="form-input"
 				/>
@@ -224,7 +239,7 @@
 				{#if onclose}
 					<button type="button" class="btn btn-secondary" onclick={onclose}> Cancel </button>
 				{/if}
-				<button type="submit" class="btn btn-primary" disabled={isSubmitting}>
+				<button type="submit" class="btn btn-primary" disabled={isSubmitting || isParsing}>
 					{#if isSubmitting}
 						<span class="spinner-small"></span>
 						<span>Recording...</span>

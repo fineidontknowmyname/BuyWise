@@ -32,12 +32,14 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /categories/{id}", h.deleteCategory)
 	mux.HandleFunc("GET /categories/{id}/transactions/count", h.categoryTransactionCount)
 	mux.HandleFunc("POST /transactions", h.createTransaction)
+	mux.HandleFunc("POST /expenses", h.recordExpense)
 	mux.HandleFunc("POST /transactions/{id}/void", h.voidTransaction)
 	mux.HandleFunc("PUT /budgets/{id}", h.setBudget)
 	mux.HandleFunc("DELETE /budgets/{id}", h.deleteBudget)
 	mux.HandleFunc("GET /budgets", h.budgetReport)
 	if store, ok := h.service.repo.(*Store); ok {
 		foundationHandler{store: store, logger: h.logger, today: h.service.Today}.register(mux)
+		h.registerCapture(mux, store)
 	}
 }
 
@@ -119,6 +121,11 @@ var problems = map[error]apiProblem{
 	ErrDuplicateName:       {http.StatusConflict, "duplicate_name", "That name is already used."},
 	ErrAlreadyVoided:       {http.StatusConflict, "already_voided", "That transaction is already void."},
 	ErrPurchaseManaged:     {http.StatusConflict, "purchase_managed", "This expense belongs to a completed purchase."},
+	errInvalidNotification: {http.StatusBadRequest, "invalid_notification", "Send a structured, past INR debit with a valid Android app identifier."},
+	errArchivedCategory:    {http.StatusBadRequest, "category_archived", "Choose an active expense category."},
+	errCandidateNotFound:   {http.StatusNotFound, "candidate_not_found", "Expense suggestion not found."},
+	errCandidateReviewed:   {http.StatusConflict, "candidate_reviewed", "This expense suggestion has already been reviewed."},
+	errPossibleDuplicate:   {http.StatusConflict, "possible_duplicate", "This account already has an expense for the same date and amount. Confirm it is a separate expense."},
 	ErrKeyConflict:         {http.StatusConflict, "idempotency_conflict", "That idempotency key was already used for a different transaction."},
 	ErrCategoryInUse:       {http.StatusConflict, "category_in_use", "Cannot delete category referenced by existing transactions; archive it instead."},
 }
@@ -300,6 +307,10 @@ func (h *Handler) categoryTransactionCount(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) createTransaction(w http.ResponseWriter, r *http.Request) {
+	if reservedCaptureKey(r.Header.Get("Idempotency-Key")) {
+		h.fail(w, "create transaction", ErrInvalidKey)
+		return
+	}
 	var req struct {
 		AccountID   string `json:"accountId"`
 		CategoryID  string `json:"categoryId"`

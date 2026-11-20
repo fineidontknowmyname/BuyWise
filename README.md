@@ -78,3 +78,17 @@ All routes below require a tenant session. Amounts use integer paise and dates u
 | `POST /goals/{id}/purchase/allocations` | Accepts a UUID `key`, `confirmed: true`, and up to ten `lines` with `accountId`, `amountPaise`, and optional `goalId`. Returns `201` on creation and `200` on an identical retry. |
 
 Migration `0015` adds the append-only purchase and allocation records and marks their ledger entries as purchase-managed. Apply it before starting the updated API. Rolling back only the application after purchases have been recorded would remove access to the lifecycle and its surplus protections. Recover by restoring a consistent pre-upgrade database and application backup, or retain the migration and fix forward.
+
+## Expense capture
+
+Open **Expenses** for manual entry and the suggestion inbox. The inbox shows the notification source, a category suggestion when the merchant matches a rule, and possible duplicates. You can change any ledger field before confirmation or dismiss the suggestion. Confirmation checks the selected account again for a matching expense. Recording a separate expense for the same date and amount requires explicit confirmation.
+
+| Authenticated route | Contract |
+|---|---|
+| `POST /expenses` | Accepts `accountId`, `categoryId`, integer `amountPaise`, `occurredOn` in `YYYY-MM-DD`, and optional `note`. Requires `Idempotency-Key`. A matching retry returns the recorded expense. |
+| `GET /expenses/candidates` | Returns up to 100 pending suggestions, oldest first. Reviewing them makes room for later suggestions. |
+| `POST /expenses/candidates/notifications` | Accepts structured INR debits with `sourceApp`, integer `amountPaise`, `currency: "INR"`, RFC 3339 `occurredAt`, and optional `merchant` and `reference`. Returns `201` for a new suggestion or `200` for a matching delivery. |
+| `POST /expenses/candidates/{id}/confirm` | Accepts the editable expense fields, `confirmed: true`, and optional `allowDuplicate: true` for a separate expense. A matching retry returns the same ledger entry. |
+| `POST /expenses/candidates/{id}/reject` | Dismisses a pending suggestion and returns `204`. Retrying a dismissal returns `204`. |
+
+Migration `0016` adds the inbox. Ingestion stores the source app, date, amount, bounded merchant name and deduplication hashes. It accepts no raw notification body. Review clears the suggested merchant from the inbox record and keeps the status, timestamps, deduplication hashes and optional ledger link. The native listener, on-device parsing and permission opt-in belong to the Android integration in Phase 10. The web app requests no notification permission.

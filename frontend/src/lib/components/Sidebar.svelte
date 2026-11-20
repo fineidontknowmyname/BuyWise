@@ -11,6 +11,7 @@
 		Wallet,
 		PieChart,
 		FileText,
+		Receipt,
 		Activity,
 		X
 	} from '@lucide/svelte';
@@ -31,6 +32,7 @@
 		{ href: resolve('/simulator'), label: 'Simulator', icon: Calculator },
 		{ href: resolve('/reports'), label: 'Reports', icon: FileText },
 		{ href: resolve('/finances'), label: 'My finances', icon: Wallet },
+		{ href: resolve('/expenses'), label: 'Expenses', icon: Receipt },
 		{ href: resolve('/accounts'), label: 'Accounts', icon: Wallet },
 		{ href: resolve('/budget'), label: 'Budget & Categories', icon: PieChart }
 	];
