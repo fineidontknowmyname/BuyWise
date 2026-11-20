@@ -187,16 +187,18 @@ func (s *Store) designate(ctx context.Context, accountID uuid.UUID, purpose stri
 }
 
 type transferInput struct {
-	FromAccountID  string `json:"fromAccountId"`
-	ToAccountID    string `json:"toAccountId"`
-	AmountPaise    int64  `json:"amountPaise"`
-	OccurredOn     string `json:"occurredOn"`
-	Note           string `json:"note"`
-	IdempotencyKey string `json:"idempotencyKey"`
+	PurchaseManaged bool   `json:"-"`
+	FromAccountID   string `json:"fromAccountId"`
+	ToAccountID     string `json:"toAccountId"`
+	AmountPaise     int64  `json:"amountPaise"`
+	OccurredOn      string `json:"occurredOn"`
+	Note            string `json:"note"`
+	IdempotencyKey  string `json:"idempotencyKey"`
 }
 
 type transfer struct {
 	transferInput
+	Managed    bool    `json:"purchaseManaged,omitempty"`
 	ID         string  `json:"id"`
 	ReversesID *string `json:"reversesId"`
 	Reversed   bool    `json:"reversed"`
@@ -218,13 +220,14 @@ func (i *transferInput) validate(today time.Time) bool {
 
 const transferSelect = `SELECT t.id::text, t.from_account_id::text, t.to_account_id::text, t.amount_paise,
     to_char(t.occurred_on, 'YYYY-MM-DD'), t.note, t.idempotency_key, t.reverses_id::text,
-    EXISTS (SELECT FROM finance.transfers r WHERE r.reverses_id = t.id)
+    EXISTS (SELECT FROM finance.transfers r WHERE r.reverses_id = t.id), t.purchase_managed
     FROM finance.transfers t`
 
 func scanTransfer(row pgx.Row) (transfer, error) {
 	var entry transfer
 	err := row.Scan(&entry.ID, &entry.FromAccountID, &entry.ToAccountID, &entry.AmountPaise,
-		&entry.OccurredOn, &entry.Note, &entry.IdempotencyKey, &entry.ReversesID, &entry.Reversed)
+		&entry.OccurredOn, &entry.Note, &entry.IdempotencyKey, &entry.ReversesID, &entry.Reversed, &entry.PurchaseManaged)
+	entry.Managed = entry.PurchaseManaged
 	return entry, err
 }
 
@@ -251,11 +254,11 @@ func (s *Store) createTransfer(ctx context.Context, input transferInput) (transf
 	}
 	db := database.Scoped(ctx, s.pool)
 	tag, err := db.Exec(ctx, `INSERT INTO finance.transfers
-        (from_account_id, to_account_id, amount_paise, occurred_on, note, idempotency_key)
-        SELECT a.id, b.id, $3, $4::date, $5, $6 FROM finance.accounts a CROSS JOIN finance.accounts b
+		(from_account_id, to_account_id, amount_paise, occurred_on, note, idempotency_key, purchase_managed)
+		SELECT a.id, b.id, $3, $4::date, $5, $6, $7 FROM finance.accounts a CROSS JOIN finance.accounts b
         WHERE a.id = $1::uuid AND b.id = $2::uuid
         ON CONFLICT (user_id, idempotency_key) DO NOTHING`,
-		input.FromAccountID, input.ToAccountID, input.AmountPaise, input.OccurredOn, input.Note, input.IdempotencyKey)
+		input.FromAccountID, input.ToAccountID, input.AmountPaise, input.OccurredOn, input.Note, input.IdempotencyKey, input.PurchaseManaged)
 	if err != nil {
 		return transfer{}, false, err
 	}
@@ -277,7 +280,7 @@ func (s *Store) reverseTransfer(ctx context.Context, id uuid.UUID, today time.Ti
 	_, err := db.Exec(ctx, `INSERT INTO finance.transfers
         (from_account_id, to_account_id, amount_paise, occurred_on, note, idempotency_key, reverses_id)
         SELECT to_account_id, from_account_id, amount_paise, $2::date, '', $3, id
-        FROM finance.transfers WHERE id = $1::uuid AND reverses_id IS NULL
+		FROM finance.transfers WHERE id = $1::uuid AND reverses_id IS NULL AND NOT purchase_managed
         ON CONFLICT (user_id, reverses_id) DO NOTHING`,
 		id.String(), today.Format(DateLayout), "reverse-"+id.String())
 	if err != nil {

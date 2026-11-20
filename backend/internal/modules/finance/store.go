@@ -16,7 +16,7 @@ import (
 const uniqueViolation = "23505"
 
 const transactionColumns = `id::text, account_id::text, category_id::text, kind, amount_paise,
-	occurred_on::text, note, idempotency_key, voided_at, void_reason, created_at`
+	occurred_on::text, note, idempotency_key, voided_at, void_reason, created_at, purchase_managed`
 
 const accountSummarySelect = `SELECT a.id::text, a.name, a.opening_balance_paise, a.created_at,
 	a.opening_balance_paise + COALESCE(SUM(
@@ -215,11 +215,11 @@ func (s *Store) CreateTransaction(ctx context.Context, tx Transaction) (Transact
 	}
 	tag, err := database.Scoped(ctx, s.pool).Exec(ctx,
 		`INSERT INTO finance.transactions
-			(id, account_id, category_id, kind, amount_paise, occurred_on, note, idempotency_key, created_at)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::date, $7, $8, $9)
+			(id, account_id, category_id, kind, amount_paise, occurred_on, note, idempotency_key, created_at, purchase_managed)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::date, $7, $8, $9, $10)
 		ON CONFLICT (user_id, idempotency_key) DO NOTHING`,
 		tx.ID.String(), tx.AccountID.String(), tx.CategoryID.String(), string(tx.Kind), tx.AmountPaise,
-		tx.OccurredOn.Format(DateLayout), tx.Note, tx.IdempotencyKey, tx.CreatedAt)
+		tx.OccurredOn.Format(DateLayout), tx.Note, tx.IdempotencyKey, tx.CreatedAt, tx.PurchaseManaged)
 	if err != nil {
 		return Transaction{}, false, fmt.Errorf("create transaction: %w", err)
 	}
@@ -264,7 +264,7 @@ func (s *Store) VoidTransaction(ctx context.Context, id uuid.UUID, at time.Time,
 	}
 	row := database.Scoped(ctx, s.pool).QueryRow(ctx,
 		`UPDATE finance.transactions SET voided_at = $2, void_reason = $3
-		WHERE id = $1::uuid AND voided_at IS NULL RETURNING `+transactionColumns,
+		WHERE id = $1::uuid AND voided_at IS NULL AND NOT purchase_managed RETURNING `+transactionColumns,
 		id.String(), at, reason)
 	tx, err := scanTransaction(row)
 	if err == nil {
@@ -273,22 +273,26 @@ func (s *Store) VoidTransaction(ctx context.Context, id uuid.UUID, at time.Time,
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Transaction{}, fmt.Errorf("void transaction: %w", err)
 	}
-	var exists bool
-	if err := database.Scoped(ctx, s.pool).QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM finance.transactions WHERE id = $1::uuid)`, id.String()).Scan(&exists); err != nil {
+	var managed bool
+	err = database.Scoped(ctx, s.pool).QueryRow(ctx,
+		`SELECT purchase_managed FROM finance.transactions WHERE id = $1::uuid`, id.String()).Scan(&managed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Transaction{}, ErrTransactionNotFound
+	}
+	if err != nil {
 		return Transaction{}, fmt.Errorf("void transaction: %w", err)
 	}
-	if exists {
-		return Transaction{}, ErrAlreadyVoided
+	if managed {
+		return Transaction{}, ErrPurchaseManaged
 	}
-	return Transaction{}, ErrTransactionNotFound
+	return Transaction{}, ErrAlreadyVoided
 }
 
 func scanTransaction(row pgx.Row) (Transaction, error) {
 	var tx Transaction
 	var id, accountID, categoryID, kind, occurredOn string
 	if err := row.Scan(&id, &accountID, &categoryID, &kind, &tx.AmountPaise, &occurredOn,
-		&tx.Note, &tx.IdempotencyKey, &tx.VoidedAt, &tx.VoidReason, &tx.CreatedAt); err != nil {
+		&tx.Note, &tx.IdempotencyKey, &tx.VoidedAt, &tx.VoidReason, &tx.CreatedAt, &tx.PurchaseManaged); err != nil {
 		return Transaction{}, err
 	}
 	var err error

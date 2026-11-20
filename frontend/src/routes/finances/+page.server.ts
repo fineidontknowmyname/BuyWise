@@ -39,6 +39,7 @@ type Foundation = {
 };
 
 type Transfer = {
+	purchaseManaged?: boolean;
 	id: string;
 	fromAccountId: string;
 	toAccountId: string;

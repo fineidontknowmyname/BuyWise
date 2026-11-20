@@ -5,3 +5,7 @@ reverse-engineering/
 .env
 .env.*
 !.env.example
+
+# Local Phase 6 verification files
+/backend/internal/app/purchase_lifecycle_test.go
+/backend/.phase6-test-db/

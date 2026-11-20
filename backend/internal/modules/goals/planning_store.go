@@ -89,8 +89,7 @@ func (s *Store) fundingHistory(ctx context.Context, id uuid.UUID) ([]fundingEntr
 
 func (s *Store) reservations(ctx context.Context) (map[string]int64, error) {
 	rows, err := database.Scoped(ctx, s.pool).Query(ctx, `SELECT f.account_id::text, SUM(f.amount_paise)::bigint
-        FROM goals.funding f JOIN goals.goals g ON g.id = f.goal_id
-        WHERE g.status IN ('active', 'paused') GROUP BY f.account_id`)
+        FROM goals.reserved_funds f GROUP BY f.account_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -114,10 +113,9 @@ type AccountReservations struct {
 
 func (s *Store) PurchaseReservations(ctx context.Context, id uuid.UUID) (map[string]AccountReservations, error) {
 	rows, err := database.Scoped(ctx, s.pool).Query(ctx, `SELECT f.account_id::text,
-        COALESCE(SUM(f.amount_paise) FILTER (WHERE f.goal_id = $1::uuid), 0)::bigint,
-        COALESCE(SUM(f.amount_paise) FILTER (WHERE f.goal_id <> $1::uuid), 0)::bigint
-        FROM goals.funding f JOIN goals.goals g ON g.id = f.goal_id
-        WHERE g.status IN ('active', 'paused') GROUP BY f.account_id`, id.String())
+        COALESCE(SUM(f.amount_paise) FILTER (WHERE f.goal_id = $1::uuid AND NOT f.is_surplus), 0)::bigint,
+        COALESCE(SUM(f.amount_paise) FILTER (WHERE f.goal_id <> $1::uuid OR f.is_surplus), 0)::bigint
+        FROM goals.reserved_funds f GROUP BY f.account_id`, id.String())
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +154,10 @@ func (s *Store) addFunding(ctx context.Context, id uuid.UUID, input fundingInput
         (goal_id, account_id, amount_paise, idempotency_key) VALUES ($1::uuid, $2::uuid, $3, $4)`,
 		id.String(), input.AccountID, input.AmountPaise, input.IdempotencyKey)
 	return err
+}
+
+func (s *Store) AddSurplusFunding(ctx context.Context, id uuid.UUID, accountID string, amount int64) error {
+	return s.addFunding(ctx, id, fundingInput{AccountID: accountID, AmountPaise: amount, IdempotencyKey: uuid.NewV7().String()})
 }
 
 func (s *Store) setLifecycle(ctx context.Context, id uuid.UUID, status string) error {

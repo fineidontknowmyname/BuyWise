@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { enhance } from '$app/forms';
 	import PurchaseReadiness from '#lib/components/PurchaseReadiness.svelte';
+	import PurchaseLifecycle from '#lib/components/PurchaseLifecycle.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import PriceTimelineChart from '#lib/components/PriceTimelineChart.svelte';
 	import { formatRupees } from '#lib/money.js';
@@ -254,11 +255,31 @@
 		</a>
 		{#if data.goal}
 			<a href={resolve('/goals/[id]/plan', { id: data.goal.id })} class="btn btn-primary"
-				>Open savings plan</a
+				>{data.purchase?.purchase ? 'View savings history' : 'Open savings plan'}</a
 			>
 		{/if}
 	</div>
 
+	<PurchaseLifecycle
+		lifecycle={data.purchase}
+		goalId={decision.goalId}
+		goalName={decision.goalName}
+		today={data.purchaseToday}
+		allocationKey={data.allocationKey}
+		active={data.goal?.status === 'active' || data.goal?.status === 'paused'}
+		feedback={form}
+	/>
+	{#if data.purchase?.purchase || data.goal?.status === 'completed'}
+		{#if data.purchase && !data.purchase.purchase}
+			<p>This goal was completed before purchase details were recorded.</p>
+		{/if}
+		<PurchaseReadiness {decision} history={data.decisionHistory} historyOnly />
+	{:else}
+		{@render goalTracking()}
+	{/if}
+</div>
+
+{#snippet goalTracking()}
 	<div class="decision-hero card {activeState.badgeClass}">
 		<div class="hero-main">
 			<div class="hero-left">
@@ -763,7 +784,7 @@
 			</div>
 		</div>
 	{/if}
-</div>
+{/snippet}
 
 <!-- =========================================================================
      MODAL 1: Edit Target Price

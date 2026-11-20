@@ -55,6 +55,9 @@ func newDomainHandler(deps Dependencies) http.Handler {
 	if goalsOK && financeOK {
 		modules = append(modules, goals.NewPlanner(goalsStore, planningFinance{financeStore}, deps.Logger, deps.Now))
 	}
+	if goalsOK && financeOK && poolOK {
+		modules = append(modules, purchaseLifecycle{pool, goalsStore, financeStore, deps.Logger, deps.Now})
+	}
 	return httpserver.NewRouter(deps.DB, modules...)
 
 }

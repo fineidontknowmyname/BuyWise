@@ -76,14 +76,17 @@ func (s *Store) Update(ctx context.Context, goal Goal) error {
 		`UPDATE goals.goals SET
 			name = $2, target_price_paise = $3,
 			target_date = $4::date, priority = $5, product_id = $6::uuid
-		WHERE id = $1::uuid`,
+		WHERE id = $1::uuid AND status <> 'completed'`,
 		goal.ID.String(), goal.Name, goal.TargetPricePaise, goal.TargetDate, priority, prodID,
 	)
 	if err != nil {
 		return fmt.Errorf("update goal: %w", err)
 	}
 	if cmd.RowsAffected() == 0 {
-		return ErrNotFound
+		if _, err := s.Get(ctx, goal.ID); err != nil {
+			return err
+		}
+		return errPlanUnavailable
 	}
 	return nil
 }

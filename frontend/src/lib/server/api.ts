@@ -165,6 +165,7 @@ export type Category = {
 };
 
 export type Transaction = {
+	purchaseManaged?: boolean;
 	id: string;
 	accountId: string;
 	categoryId: string;

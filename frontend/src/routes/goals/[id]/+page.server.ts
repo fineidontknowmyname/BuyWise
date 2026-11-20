@@ -1,4 +1,8 @@
 import { error, fail } from '@sveltejs/kit';
+import { randomUUID } from 'node:crypto';
+import { parseRupees } from '#lib/money.js';
+import { todayInIndia } from '#lib/dates.js';
+import type { PurchaseInput, PurchaseLifecycle, PurchasePreview } from '#lib/purchase.js';
 import {
 	apiRequest,
 	type Decision,
@@ -16,10 +20,11 @@ export const load: PageServerLoad = async ({ fetch, params }) => {
 	const base = apiUrl();
 	const goalId = params.id;
 
-	const [decisionRes, goalRes, historyRes] = await Promise.all([
+	const [decisionRes, goalRes, historyRes, purchaseRes] = await Promise.all([
 		apiRequest<Decision>(fetch, base, `/goals/${encodeURIComponent(goalId)}/decision`),
 		apiRequest<Goal>(fetch, base, `/goals/${encodeURIComponent(goalId)}`),
-		apiRequest<Decision[]>(fetch, base, `/goals/${encodeURIComponent(goalId)}/decision/history`)
+		apiRequest<Decision[]>(fetch, base, `/goals/${encodeURIComponent(goalId)}/decision/history`),
+		apiRequest<PurchaseLifecycle>(fetch, base, `/goals/${encodeURIComponent(goalId)}/purchase`)
 	]);
 
 	if (!decisionRes.ok) {
@@ -55,6 +60,9 @@ export const load: PageServerLoad = async ({ fetch, params }) => {
 	}
 
 	return {
+		purchase: purchaseRes.ok ? purchaseRes.data : null,
+		purchaseToday: todayInIndia(),
+		allocationKey: randomUUID(),
 		decision: decisionRes.data,
 		decisionHistory: historyRes.ok ? historyRes.data : null,
 		goal,
@@ -65,7 +73,91 @@ export const load: PageServerLoad = async ({ fetch, params }) => {
 	};
 };
 
+const field = (form: FormData, key: string) => String(form.get(key) ?? '');
+
+function purchaseInput(form: FormData, costPaise: number): PurchaseInput {
+	return {
+		date: field(form, 'date'),
+		seller: field(form, 'seller'),
+		costPaise,
+		reference: field(form, 'reference'),
+		paymentAccountId: field(form, 'paymentAccountId'),
+		categoryId: field(form, 'categoryId')
+	};
+}
+
 export const actions: Actions = {
+	previewPurchase: async ({ params, request, fetch }) => {
+		const form = await request.formData();
+		const cost = parseRupees(field(form, 'cost'));
+		const input = purchaseInput(form, cost ?? 0);
+		if (!cost)
+			return fail(400, { purchaseError: 'Enter a positive landed cost.', purchaseDraft: input });
+		const result = await apiRequest<Omit<PurchasePreview, 'key'>>(
+			fetch,
+			apiUrl(),
+			`/goals/${encodeURIComponent(params.id)}/purchase/preview`,
+			{ method: 'POST', body: JSON.stringify(input) }
+		);
+		return result.ok
+			? { purchasePreview: { ...result.data, key: randomUUID() }, purchaseDraft: input }
+			: fail(result.status, { purchaseError: result.error.message, purchaseDraft: input });
+	},
+	completePurchase: async ({ params, request, fetch }) => {
+		const form = await request.formData();
+		const input = purchaseInput(form, Number(field(form, 'costPaise')));
+		const result = await apiRequest(
+			fetch,
+			apiUrl(),
+			`/goals/${encodeURIComponent(params.id)}/purchase`,
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					...input,
+					key: field(form, 'key'),
+					token: field(form, 'token'),
+					confirmed: form.get('confirmed') === 'yes'
+				})
+			}
+		);
+		return result.ok
+			? { purchaseSaved: true }
+			: fail(result.status, { purchaseError: result.error.message, purchaseDraft: input });
+	},
+	allocateSurplus: async ({ params, request, fetch }) => {
+		const form = await request.formData();
+		const accounts = form.getAll('accountId');
+		const goals = form.getAll('goalId');
+		const amounts = form.getAll('amount');
+		const lines = accounts.map((account, index) => ({
+			accountId: String(account),
+			goalId: String(goals[index] ?? ''),
+			amount: String(amounts[index] ?? '')
+		}));
+		const allocationDraft = lines.length <= 10 ? lines : [];
+		const result = await apiRequest(
+			fetch,
+			apiUrl(),
+			`/goals/${encodeURIComponent(params.id)}/purchase/allocations`,
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					key: field(form, 'key'),
+					confirmed: form.get('confirmed') === 'yes',
+					lines: lines
+						.filter(({ accountId, goalId, amount }) => accountId || goalId || amount.trim())
+						.map(({ accountId, goalId, amount }) => ({
+							accountId,
+							goalId,
+							amountPaise: parseRupees(amount) ?? 0
+						}))
+				})
+			}
+		);
+		return result.ok
+			? { allocationSaved: true }
+			: fail(result.status, { allocationError: result.error.message, allocationDraft });
+	},
 	reassess: async ({ params, fetch }) => {
 		const result = await apiRequest<Decision>(
 			fetch,

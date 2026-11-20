@@ -61,3 +61,20 @@ Open **[http://localhost:5173](http://localhost:5173)**. Both the Go backend API
 | `pnpm lint` | Run Go formatting, `go vet`, Prettier, ESLint, and `svelte-check` |
 | `pnpm format` | Auto-format Go code and frontend components |
 | `pnpm migrate` | Run database migrations only |
+
+## Purchase completion
+
+Open a goal and choose **Mark purchased**. Enter the date, seller, landed cost, payment account and expense category. The review shows the expense, any earmarked funds to transfer to the payment account, and the surplus that will remain reserved. A shortfall uses unallocated money in the selected account only when the saved financial profile and current balances support it.
+
+After completion, allocate surplus to another active goal, general savings, an emergency reserve, or a split across those destinations. A transfer between accounts changes both balances. Allocating in the same account changes only the earmark. The original target and contribution history stay available alongside the expense and allocation history.
+
+All routes below require a tenant session. Amounts use integer paise and dates use `YYYY-MM-DD` in India.
+
+| Route | Contract |
+|---|---|
+| `GET /goals/{id}/purchase` | Returns the purchase record if present, unallocated surplus, available destination options, and allocation history. |
+| `POST /goals/{id}/purchase/preview` | Accepts `date`, `seller`, `costPaise`, `reference`, `paymentAccountId`, and `categoryId`. Returns `summary` and a review `token`. |
+| `POST /goals/{id}/purchase` | Accepts the same fields plus the `token`, a UUID `key`, and `confirmed: true`. Returns `201` on creation, `200` on an identical retry, or `409` if the review changed or a different purchase is already recorded. |
+| `POST /goals/{id}/purchase/allocations` | Accepts a UUID `key`, `confirmed: true`, and up to ten `lines` with `accountId`, `amountPaise`, and optional `goalId`. Returns `201` on creation and `200` on an identical retry. |
+
+Migration `0015` adds the append-only purchase and allocation records and marks their ledger entries as purchase-managed. Apply it before starting the updated API. Rolling back only the application after purchases have been recorded would remove access to the lifecycle and its surplus protections. Recover by restoring a consistent pre-upgrade database and application backup, or retain the migration and fix forward.

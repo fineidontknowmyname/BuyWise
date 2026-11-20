@@ -58,17 +58,18 @@ type categoryResponse struct {
 }
 
 type transactionResponse struct {
-	ID          string     `json:"id"`
-	AccountID   string     `json:"accountId"`
-	CategoryID  string     `json:"categoryId"`
-	Kind        Kind       `json:"kind"`
-	AmountPaise int64      `json:"amountPaise"`
-	OccurredOn  string     `json:"occurredOn"`
-	Note        string     `json:"note"`
-	Voided      bool       `json:"voided"`
-	VoidedAt    *time.Time `json:"voidedAt"`
-	VoidReason  string     `json:"voidReason"`
-	CreatedAt   time.Time  `json:"createdAt"`
+	PurchaseManaged bool       `json:"purchaseManaged,omitempty"`
+	ID              string     `json:"id"`
+	AccountID       string     `json:"accountId"`
+	CategoryID      string     `json:"categoryId"`
+	Kind            Kind       `json:"kind"`
+	AmountPaise     int64      `json:"amountPaise"`
+	OccurredOn      string     `json:"occurredOn"`
+	Note            string     `json:"note"`
+	Voided          bool       `json:"voided"`
+	VoidedAt        *time.Time `json:"voidedAt"`
+	VoidReason      string     `json:"voidReason"`
+	CreatedAt       time.Time  `json:"createdAt"`
 }
 
 func toAccountResponse(a AccountSummary) accountResponse {
@@ -87,6 +88,7 @@ func toTransactionResponse(t Transaction) transactionResponse {
 		ID: t.ID.String(), AccountID: t.AccountID.String(), CategoryID: t.CategoryID.String(),
 		Kind: t.Kind, AmountPaise: t.AmountPaise, OccurredOn: t.OccurredOn.Format(DateLayout),
 		Note: t.Note, Voided: t.Voided(), VoidedAt: t.VoidedAt, VoidReason: t.VoidReason, CreatedAt: t.CreatedAt,
+		PurchaseManaged: t.PurchaseManaged,
 	}
 }
 
@@ -116,6 +118,7 @@ var problems = map[error]apiProblem{
 	ErrTransactionNotFound: {http.StatusNotFound, "transaction_not_found", "No transaction with that ID."},
 	ErrDuplicateName:       {http.StatusConflict, "duplicate_name", "That name is already used."},
 	ErrAlreadyVoided:       {http.StatusConflict, "already_voided", "That transaction is already void."},
+	ErrPurchaseManaged:     {http.StatusConflict, "purchase_managed", "This expense belongs to a completed purchase."},
 	ErrKeyConflict:         {http.StatusConflict, "idempotency_conflict", "That idempotency key was already used for a different transaction."},
 	ErrCategoryInUse:       {http.StatusConflict, "category_in_use", "Cannot delete category referenced by existing transactions; archive it instead."},
 }

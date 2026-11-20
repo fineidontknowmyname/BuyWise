@@ -3,7 +3,11 @@
 	import { formatRupees } from '#lib/money.js';
 	import type { Decision } from '#lib/server/api.js';
 
-	let { decision, history }: { decision: Decision; history: Decision[] | null } = $props();
+	let {
+		decision,
+		history,
+		historyOnly = false
+	}: { decision: Decision; history: Decision[] | null; historyOnly?: boolean } = $props();
 
 	const labels = {
 		BUY: 'Buy',
@@ -122,21 +126,27 @@
 {/snippet}
 
 <section aria-label="Purchase readiness">
-	{@render readiness(decision)}
-	<nav aria-label="Update decision inputs">
-		<a href={resolve('/finances')}>Review financial profile</a>
-		{#if decision.evidence.prices.productId}
-			<a href={resolve('/products/[id]/offers', { id: decision.evidence.prices.productId })}>
-				Review retailer offers
-			</a>
-		{/if}
-	</nav>
+	{#if !historyOnly}
+		{@render readiness(decision)}
+		<nav aria-label="Update decision inputs">
+			<a href={resolve('/finances')}>Review financial profile</a>
+			{#if decision.evidence.prices.productId}
+				<a href={resolve('/products/[id]/offers', { id: decision.evidence.prices.productId })}>
+					Review retailer offers
+				</a>
+			{/if}
+		</nav>
+	{/if}
 	<details>
 		<summary>Saved decision history</summary>
 		{#if history === null}
 			<p>Decision history is temporarily unavailable.</p>
 		{:else if history.length === 0}
-			<p>Choose Reassess and save to record your first assessment.</p>
+			<p>
+				{historyOnly
+					? 'No saved purchase assessments.'
+					: 'Choose Reassess and save to record your first assessment.'}
+			</p>
 		{:else}
 			{#each history as previous (previous.id)}
 				<details class="history-item">

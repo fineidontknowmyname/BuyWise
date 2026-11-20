@@ -50,7 +50,7 @@ func toResponse(goal Goal) goalResponse {
 		prodID = &str
 	}
 	allocated := goal.AllocatedPaise
-	if goal.Status == "cancelled" || goal.Status == "completed" {
+	if goal.Status == "cancelled" {
 		allocated = 0
 	}
 	return goalResponse{LegacySavedPaise: goal.SavedAmountPaise,
@@ -77,6 +77,10 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	var req createRequest
 	if err := httpjson.Decode(w, r, &req); err != nil {
 		httpjson.WriteError(w, http.StatusBadRequest, "invalid_body", "The request body must be JSON with a name.")
+		return
+	}
+	if req.Status == "completed" {
+		httpjson.WriteError(w, http.StatusBadRequest, "invalid_status", "Record a purchase to complete a goal.")
 		return
 	}
 	var prodUUID *uuid.UUID
@@ -138,6 +142,10 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = h.service.Update(r.Context(), g)
+	if errors.Is(err, errPlanUnavailable) {
+		httpjson.WriteError(w, http.StatusConflict, "goal_inactive", "A completed goal retains its purchase target and details.")
+		return
+	}
 	if errors.Is(err, ErrNotFound) {
 		httpjson.WriteError(w, http.StatusNotFound, "goal_not_found", "No goal with that ID.")
 		return

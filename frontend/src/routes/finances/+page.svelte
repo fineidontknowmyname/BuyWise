@@ -270,6 +270,7 @@
 						{#if entry.note}<span>{entry.note}</span>{/if}
 						{#if entry.reversesId}<span>Reversal</span>
 						{:else if entry.reversed}<span>Reversed</span>
+						{:else if entry.purchaseManaged}<span>Purchase transfer</span>
 						{:else}
 							<form method="POST" action="?/reverse" use:enhance>
 								<input type="hidden" name="transferId" value={entry.id} />

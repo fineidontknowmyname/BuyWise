@@ -158,7 +158,7 @@
 									{/if}
 								</td>
 								<td style="text-align: right;">
-									{#if !tx.voided}
+									{#if !tx.voided && !tx.purchaseManaged}
 										<button
 											type="button"
 											class="btn-icon btn-sm text-danger-btn"
