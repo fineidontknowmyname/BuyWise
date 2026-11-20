@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -132,8 +133,8 @@ func (h *Handler) authenticate(register bool) http.HandlerFunc {
 		}
 		email := strings.ToLower(strings.TrimSpace(input.Email))
 		address, err := mail.ParseAddress(email)
-		if err != nil || address.Address != email || len(email) > 254 || len(input.Password) > 256 || len(input.Password) == 0 || (register && len([]rune(input.Password)) < 15) {
-			httpjson.WriteError(w, 400, "invalid_credentials", "Provide a valid email and a password of at least 15 characters when registering.")
+		if err != nil || address.Address != email || len(email) > 254 || len(input.Password) > 256 || len(input.Password) == 0 || (register && utf8.RuneCountInString(input.Password) < 8) {
+			httpjson.WriteError(w, 400, "invalid_credentials", "Provide a valid email and a password of at least 8 characters when registering.")
 			return
 		}
 		select {

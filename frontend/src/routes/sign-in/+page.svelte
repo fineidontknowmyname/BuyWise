@@ -1,7 +1,9 @@
 ﻿<script lang="ts">
+	import { Eye, EyeOff } from '@lucide/svelte';
 	import type { PageProps } from './$types';
 	let { form }: PageProps = $props();
 	let registering = $state(false);
+	let passwordVisible = $state(false);
 	const register = $derived(form?.register ?? registering);
 </script>
 
@@ -20,16 +22,37 @@
 					required
 				/></label
 			>
-			<label
-				>Password <input
-					type="password"
-					name="password"
-					autocomplete={register ? 'new-password' : 'current-password'}
-					minlength={register ? 15 : undefined}
-					maxlength="256"
-					required
-				/></label
-			>
+			<div class="password-field">
+				<label for="password">Password</label>
+				<div class="password-input">
+					<input
+						id="password"
+						type={passwordVisible ? 'text' : 'password'}
+						name="password"
+						autocomplete={register ? 'new-password' : 'current-password'}
+						minlength={register ? 8 : undefined}
+						maxlength="256"
+						aria-describedby={register ? 'password-hint' : undefined}
+						spellcheck="false"
+						autocapitalize="none"
+						required
+					/>
+					<button
+						type="button"
+						class="password-toggle"
+						aria-controls="password"
+						aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+						onclick={() => (passwordVisible = !passwordVisible)}
+					>
+						{#if passwordVisible}
+							<EyeOff size={19} aria-hidden="true" />
+						{:else}
+							<Eye size={19} aria-hidden="true" />
+						{/if}
+					</button>
+				</div>
+				{#if register}<small id="password-hint">Use at least 8 characters.</small>{/if}
+			</div>
 			<button class="primary" name="intent" value={register ? 'register' : 'login'}>
 				{register ? 'Create account' : 'Sign in'}
 			</button>
@@ -39,6 +62,7 @@
 			type="button"
 			onclick={() => {
 				registering = !register;
+				passwordVisible = false;
 				form = null;
 			}}
 		>
@@ -78,7 +102,8 @@
 		margin: 0.75rem 0 1.25rem;
 	}
 	form,
-	label {
+	label,
+	.password-field {
 		display: grid;
 		gap: 0.55rem;
 	}
@@ -97,6 +122,29 @@
 		padding: 0.5rem 0.65rem;
 		background: transparent;
 		color: inherit;
+	}
+	.password-input {
+		position: relative;
+	}
+	.password-input input {
+		padding-inline-end: 3rem;
+	}
+	.password-input input::-ms-reveal {
+		display: none;
+	}
+	.password-toggle {
+		position: absolute;
+		inset-block: 0;
+		inset-inline-end: 0.25rem;
+		width: 2.5rem;
+		display: grid;
+		place-items: center;
+		border: 0;
+		background: transparent;
+		color: inherit;
+	}
+	.password-field small {
+		color: var(--foreground-secondary);
 	}
 	.primary {
 		border: 0;
