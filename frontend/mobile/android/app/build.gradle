@@ -1,0 +1,70 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+def serverUrl = providers.gradleProperty('buywiseServerUrl').orElse(providers.environmentVariable('BUYWISE_SERVER_URL')).orElse('').get()
+def signingValues = ['BUYWISE_KEYSTORE', 'BUYWISE_STORE_PASSWORD', 'BUYWISE_KEY_ALIAS', 'BUYWISE_KEY_PASSWORD'].collect { System.getenv(it) }
+if (signingValues.any { it } && !signingValues.every { it }) {
+    throw new GradleException('Supply all four BUYWISE signing environment variables.')
+}
+
+android {
+    buildFeatures { buildConfig = true }
+    sourceSets { main.java.srcDir '../../native' }
+    kotlinOptions { jvmTarget = '21' }
+    namespace = "com.buywise.app"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        buildConfigField 'String', 'BUYWISE_SERVER_URL', groovy.json.JsonOutput.toJson(serverUrl)
+        applicationId "com.buywise.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        if (signingValues.every { it }) {
+            release {
+                storeFile file(signingValues[0])
+                storePassword signingValues[1]
+                keyAlias signingValues[2]
+                keyPassword signingValues[3]
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            buildConfigField 'String', 'BUYWISE_SERVER_URL', groovy.json.JsonOutput.toJson(serverUrl ?: 'http://10.0.2.2:5173')
+        }
+        release {
+            if (signingValues.every { it }) signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'

@@ -25,6 +25,7 @@ export const handleFetch: HandleFetch = ({ event, request, fetch }) => {
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const path = event.url.pathname;
+	if (path.startsWith('/api/mobile/')) return resolve(event);
 	const cookie = event.cookies.get(sessionCookie);
 	const token = sessionToken(event);
 	if (!['GET', 'HEAD', 'OPTIONS'].includes(event.request.method)) {

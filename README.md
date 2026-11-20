@@ -116,3 +116,23 @@ Overview uses posted, non-voided ledger entries for the monthly cash-flow chart.
 `GET /activity` returns up to 20 entries and an optional `next` cursor. Pass that cursor as `before` to load older entries. `kind` accepts `ledger`, `goals`, `decisions`, `prices`, or `purchases`. The feed reads existing domain records, including saved decisions and purchase history.
 
 Migration `0017` adds workspace preferences. Profile also links to financial assumptions, supports signing out other sessions, and downloads a workspace snapshot of profile settings, account balances, goals, products, and the current budget. Account deletion and a complete data export require the product's privacy and retention requirements.
+
+## Android app
+
+The Android app bundles the Svelte mobile interface locally. Overview, current goal assessments, manual expenses, and expense suggestion review use the same Go services through the SvelteKit `/api/mobile` gateway. Sign-up and advanced goal workflows open the regular BuyWise web app. The gateway exposes only the required mobile routes. It keeps PostgreSQL and the Go service private.
+
+Use Node 22, JDK 21, Android SDK 36, and an Android 8.0 or newer device or emulator. From the repository root:
+
+```powershell
+npm.cmd --prefix frontend/mobile ci
+pnpm.cmd --dir frontend build:mobile
+npm.cmd --prefix frontend/mobile run sync
+Set-Location frontend/mobile/android
+.\gradlew.bat assembleDebug
+```
+
+The debug APK is written to `frontend/mobile/android/app/build/outputs/apk/debug/app-debug.apk`. The emulator build defaults to `http://10.0.2.2:5173` and requires a running local BuyWise server. Create a BuyWise account in the desktop web app before signing in on the emulator. For physical devices and releases, set `BUYWISE_SERVER_URL` to the HTTPS origin of the SvelteKit app before building, then run `gradlew.bat assembleDebug` or `gradlew.bat bundleRelease` from the Android project. For a signed release, supply `BUYWISE_KEYSTORE`, `BUYWISE_STORE_PASSWORD`, `BUYWISE_KEY_ALIAS`, and `BUYWISE_KEY_PASSWORD` in the build environment. Store the keystore outside the repository.
+
+Notification capture is off by default. Grant Android notification access from **Settings**, enter only the payment app package IDs you want to use, then enable capture in BuyWise. Capture checks selected apps for unambiguous INR debit messages. Raw notification text stays on the device transiently and is discarded. Structured suggestions wait in the encrypted queue until you tap **Sync**, and remain separate from posted expenses until you confirm them. To stop capture, disable it in BuyWise and revoke Android notification access. Disabling in BuyWise clears unsent suggestions.
+
+Android Keystore protects the session, queue, and read cache. Cached records expire after 24 hours and are marked in the app. Expense writes require connectivity. Manual submission retries reuse the request key while the form is open. Successful notification uploads leave the queue, and the Go API deduplicates repeated deliveries. Signing out clears local records.
