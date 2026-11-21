@@ -21,7 +21,9 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 		apiRequest<Account[]>(fetch, base, '/accounts')
 	]);
 
-	const categories = categoriesRes.ok ? categoriesRes.data : [];
+	const categories = categoriesRes.ok
+		? categoriesRes.data.filter((category) => category.kind === 'expense')
+		: [];
 	const budgetReport = budgetsRes.ok ? budgetsRes.data : null;
 	const accounts = accountsRes.ok ? accountsRes.data : [];
 
@@ -70,14 +72,30 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 	};
 };
 
+async function expenseCategory(fetchFn: typeof fetch, id: string) {
+	const result = await apiRequest<Category>(
+		fetchFn,
+		apiUrl(),
+		'/categories/' + encodeURIComponent(id)
+	);
+	if (!result.ok) return fail(result.status, { error: result.error.message });
+	if (result.data.kind !== 'expense') {
+		return fail(400, { error: 'Manage income categories in Accounts.' });
+	}
+	return result.data;
+}
+
 export const actions: Actions = {
 	createCategory: async ({ request, fetch }) => {
 		const form = await request.formData();
 		const name = String(form.get('name') ?? '').trim();
-		const type = String(form.get('type') ?? 'discretionary'); // discretionary, committed, income
+		const type = String(form.get('type') ?? 'discretionary'); // discretionary or committed
 		const monthlyLimitRupees = String(form.get('monthlyLimit') ?? '').trim();
 
-		const kind: 'income' | 'expense' = type === 'income' ? 'income' : 'expense';
+		if (!['discretionary', 'committed'].includes(type)) {
+			return fail(400, { error: 'Choose an expense category type. Manage income in Accounts.' });
+		}
+		const kind = 'expense';
 		const committed = type === 'committed';
 
 		if (!name) {
@@ -115,7 +133,10 @@ export const actions: Actions = {
 		const type = String(form.get('type') ?? 'discretionary');
 		const archived = form.get('archived') === 'true' || form.get('archived') === 'on';
 
-		const kind: 'income' | 'expense' = type === 'income' ? 'income' : 'expense';
+		if (!['discretionary', 'committed'].includes(type)) {
+			return fail(400, { error: 'Choose an expense category type. Manage income in Accounts.' });
+		}
+		const kind = 'expense';
 		const committed = type === 'committed';
 
 		if (!id || !name) {
@@ -130,6 +151,8 @@ export const actions: Actions = {
 				error: 'Enter a valid budget amount in rupees, or leave it blank to remove the limit.'
 			});
 		}
+		const category = await expenseCategory(fetch, id);
+		if (!('kind' in category)) return category;
 		const base = apiUrl();
 		const res = await apiRequest<Category>(fetch, base, `/categories/${id}`, {
 			method: 'PUT',
@@ -146,15 +169,20 @@ export const actions: Actions = {
 	archiveCategory: async ({ request, fetch }) => {
 		const form = await request.formData();
 		const id = String(form.get('id') ?? '');
-		const name = String(form.get('name') ?? '');
-		const kind = String(form.get('kind') ?? 'expense') as 'income' | 'expense';
-		const committed = form.get('committed') === 'true';
 		const archived = form.get('archived') !== 'false'; // defaults to true
 
+		if (!id) return fail(400, { error: 'Category ID is required.' });
+		const category = await expenseCategory(fetch, id);
+		if (!('kind' in category)) return category;
 		const base = apiUrl();
 		const res = await apiRequest<Category>(fetch, base, `/categories/${id}`, {
 			method: 'PUT',
-			body: JSON.stringify({ name, kind, committed, archived })
+			body: JSON.stringify({
+				name: category.name,
+				kind: category.kind,
+				committed: category.committed,
+				archived
+			})
 		});
 
 		if (!res.ok) {
@@ -169,6 +197,8 @@ export const actions: Actions = {
 		const id = String(form.get('id') ?? '');
 		if (!id) return fail(400, { error: 'Category ID is required.' });
 
+		const category = await expenseCategory(fetch, id);
+		if (!('kind' in category)) return category;
 		const res = await apiRequest(fetch, apiUrl(), `/categories/${id}`, {
 			method: 'DELETE'
 		});

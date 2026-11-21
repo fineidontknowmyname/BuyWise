@@ -22,7 +22,7 @@
 	// Search & Filter state
 	let searchQuery = $state('');
 	let activeTab = $state<'active' | 'archived' | 'all'>('active');
-	let typeFilter = $state<'all' | 'discretionary' | 'committed' | 'income'>('all');
+	let typeFilter = $state<'all' | 'discretionary' | 'committed'>('all');
 
 	// Modals state
 	let showCreateModal = $state(false);
@@ -32,21 +32,20 @@
 
 	// Create Form bindings
 	let newName = $state('');
-	let newType = $state<'discretionary' | 'committed' | 'income'>('discretionary');
+	let newType = $state<'discretionary' | 'committed'>('discretionary');
 	let newMonthlyLimit = $state('');
 
 	// Edit / Action targets
 	let targetCategory = $state<Category | null>(null);
 	let editName = $state('');
-	let editType = $state<'discretionary' | 'committed' | 'income'>('discretionary');
+	let editType = $state<'discretionary' | 'committed'>('discretionary');
 
 	let editLimit = $state('');
 	let editSaving = $state(false);
 	let editError = $state('');
 
 	// Quick helper to categorize a Category
-	function getCategoryType(cat: Category): 'discretionary' | 'committed' | 'income' {
-		if (cat.kind === 'income') return 'income';
+	function getCategoryType(cat: Category): 'discretionary' | 'committed' {
 		if (cat.committed) return 'committed';
 		return 'discretionary';
 	}
@@ -301,14 +300,6 @@
 				>
 					Committed (Fixed)
 				</button>
-				<button
-					type="button"
-					class="filter-chip"
-					class:active={typeFilter === 'income'}
-					onclick={() => (typeFilter = 'income')}
-				>
-					Income
-				</button>
 			</div>
 		</div>
 
@@ -382,9 +373,7 @@
 
 							<!-- Category Type -->
 							<td>
-								{#if catType === 'income'}
-									<span class="type-pill income">Income</span>
-								{:else if catType === 'committed'}
+								{#if catType === 'committed'}
 									<span class="type-pill committed">Committed</span>
 								{:else}
 									<span class="type-pill discretionary">Discretionary</span>
@@ -409,10 +398,8 @@
 											<Edit3 size={13} />
 										</button>
 									</div>
-								{:else if catType === 'committed'}
-									<span class="fixed-obligation-label">Fixed obligation</span>
 								{:else}
-									<span class="income-allocation-label">—</span>
+									<span class="fixed-obligation-label">Fixed obligation</span>
 								{/if}
 							</td>
 
@@ -551,14 +538,11 @@
 			<select id="create-cat-type" name="type" class="input" bind:value={newType}>
 				<option value="discretionary">Discretionary Expense (Flexible spending)</option>
 				<option value="committed">Committed Expense (Fixed: Rent, EMIs, Bills)</option>
-				<option value="income">Income (Salary, Freelance, Dividends)</option>
 			</select>
 			<span class="field-hint">
 				{newType === 'discretionary'
 					? 'Eligible for monthly budget allocation and spending limit tracking.'
-					: newType === 'committed'
-						? 'Fixed financial obligations are accounted for prior to discretionary savings.'
-						: 'Income inflows used to compute liquid savings capacity.'}
+					: 'Fixed financial obligations are accounted for prior to discretionary savings.'}
 			</span>
 		</div>
 
@@ -651,7 +635,6 @@
 				<select id="edit-cat-type" name="type" class="input" bind:value={editType}>
 					<option value="discretionary">Discretionary Expense</option>
 					<option value="committed">Committed Expense</option>
-					<option value="income">Income</option>
 				</select>
 			</div>
 
@@ -1086,11 +1069,6 @@
 		border: 1px solid var(--border);
 	}
 
-	.type-pill.income {
-		background-color: var(--success-surface);
-		color: var(--success-foreground);
-	}
-
 	.allocation-display {
 		display: flex;
 		align-items: center;
@@ -1115,8 +1093,7 @@
 		opacity: 1;
 	}
 
-	.fixed-obligation-label,
-	.income-allocation-label {
+	.fixed-obligation-label {
 		color: var(--foreground-muted);
 		font-size: 0.85rem;
 	}
