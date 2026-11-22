@@ -13,14 +13,17 @@ import (
 	"selfemi/internal/app"
 	"selfemi/internal/modules/finance"
 	"selfemi/internal/modules/goals"
+	"selfemi/internal/modules/pricing"
 	"selfemi/internal/platform/config"
 	"selfemi/internal/platform/database"
+	"selfemi/internal/platform/httpserver"
+	"selfemi/internal/platform/identity"
 )
 
 const shutdownTimeout = 10 * time.Second
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(logger); err != nil {
 		logger.Error("api stopped with error", "error", err)
 		os.Exit(1)
@@ -28,6 +31,10 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
+	return runWithPriceProvider(logger, nil)
+}
+
+func runWithPriceProvider(logger *slog.Logger, provider pricing.PriceProvider) error {
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
 		return err
@@ -41,17 +48,39 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
+	if provider == nil && cfg.SerpAPIKey != "" {
+		provider = pricing.NewSerpAPI(pool, cfg.SerpAPIKey)
+	}
+	goalsStore := goals.NewStore(pool)
+	if provider != nil {
+		worker := pricing.NewRefreshWorker(pool, provider, time.Now).WithUpcomingPurchase(goalsStore.HasUpcomingPurchase)
+		workerDone := make(chan struct{})
+		go func() {
+			defer close(workerDone)
+			worker.Run(ctx, logger)
+		}()
+		defer func() {
+			stop()
+			<-workerDone
+		}()
+	}
 
 	server := &http.Server{
 		Addr: cfg.APIAddr,
-		Handler: app.NewHandler(app.Dependencies{
-			DB:          pool,
-			GoalsRepo:   goals.NewStore(pool),
-			FinanceRepo: finance.NewStore(pool),
-			Logger:      logger,
-			Now:         time.Now,
-		}),
+		Handler: httpserver.Observe(app.NewHandler(app.Dependencies{
+			DB:            pool,
+			Identity:      identity.New(pool),
+			GoalsRepo:     goalsStore,
+			FinanceRepo:   finance.NewStore(pool),
+			PricingRepo:   pricing.NewStore(pool),
+			PriceProvider: provider,
+			Logger:        logger,
+			Now:           time.Now,
+		}), logger),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       90 * time.Second,
 	}
 
 	serveErr := make(chan error, 1)

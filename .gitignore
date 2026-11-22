@@ -1,2 +1,15 @@
 Docs/
 CLAUDE.md
+reverse-engineering/
+
+.env
+.env.*
+!.env.example
+
+# Local Phase 6 verification files
+/backend/internal/app/purchase_lifecycle_test.go
+/backend/.phase6-test-db/
+
+# Local Phase 7 verification
+/backend/internal/modules/finance/capture_test.go
+/deploy/load.js

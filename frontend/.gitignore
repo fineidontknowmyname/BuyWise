@@ -5,6 +5,8 @@ node_modules
 .wrangler
 /.svelte-kit
 /build
+/mobile/dist/
+/mobile/android/app/src/main/assets/public/
 .DS_Store
 Thumbs.db
 .env

@@ -45,6 +45,18 @@ func (m *memoryRepo) List(context.Context) ([]goals.Goal, error) {
 	return append([]goals.Goal{}, m.items...), nil
 }
 
+func (m *memoryRepo) Update(_ context.Context, goal goals.Goal) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, g := range m.items {
+		if g.ID == goal.ID {
+			m.items[i] = goal
+			return nil
+		}
+	}
+	return goals.ErrNotFound
+}
+
 type upDB struct{}
 
 func (upDB) Ping(context.Context) error { return nil }
@@ -52,7 +64,7 @@ func (upDB) Ping(context.Context) error { return nil }
 var fixedNow = time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
 
 func newTestHandler() http.Handler {
-	return NewHandler(Dependencies{
+	return newDomainHandler(Dependencies{
 		DB:        upDB{},
 		GoalsRepo: &memoryRepo{},
 		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -73,7 +85,7 @@ func do(t *testing.T, h http.Handler, method, path, body string) (int, map[strin
 	return rec.Code, out
 }
 
-func TestCreateGoalThenStubDecision(t *testing.T) {
+func TestCreateGoalThenDecisionWithoutEvidence(t *testing.T) {
 	h := newTestHandler()
 
 	code, goal := do(t, h, http.MethodPost, "/goals", `{"name":"  Laptop  "}`)
@@ -96,18 +108,12 @@ func TestCreateGoalThenStubDecision(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("decision code = %d, body %v", code, d)
 	}
-	if d["state"] != "REASSESS" || d["rulesVersion"] != "stub-v0" || d["allInputsReal"] != false {
+	if d["state"] != "REASSESS" || d["rulesVersion"] != "purchase-v1" || d["trigger"] != "live_preview" {
 		t.Fatalf("decision = %v", d)
 	}
-	inputs, _ := d["inputs"].([]any)
-	if len(inputs) == 0 {
-		t.Fatal("decision has no inputs")
-	}
-	for _, raw := range inputs {
-		input := raw.(map[string]any)
-		if input["provenance"] != "stub" {
-			t.Errorf("input %v is not labelled stub", input)
-		}
+	reasons, _ := d["reasonCodes"].([]any)
+	if len(reasons) != 2 || reasons[0] != "profile_missing" || reasons[1] != "product_missing" {
+		t.Fatalf("unexpected reasons: %v", reasons)
 	}
 	if d["decidedAt"] != "2026-10-09T10:00:00Z" {
 		t.Errorf("decidedAt = %v", d["decidedAt"])

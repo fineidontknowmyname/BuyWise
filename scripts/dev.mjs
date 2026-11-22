@@ -16,9 +16,12 @@ if (migration.status !== 0) {
 	process.exit(migration.status ?? 1);
 }
 
+const webEnv = { ...process.env };
+delete webEnv.SERPAPI_API_KEY;
+
 const children = [
-	spawn('go', ['run', './cmd/api'], { cwd: backendDir, stdio: 'inherit', shell: useShell }),
-	spawn('pnpm', ['dev'], { cwd: frontendDir, stdio: 'inherit', shell: useShell })
+	spawn('go', ['run', './cmd/api'], { cwd: backendDir, stdio: 'inherit', shell: useShell, env: process.env }),
+	spawn('pnpm', ['dev'], { cwd: frontendDir, stdio: 'inherit', shell: useShell, env: webEnv })
 ];
 
 let stopping = false;

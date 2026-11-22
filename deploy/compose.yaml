@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: buywise
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a PostgreSQL password}
+      POSTGRES_DB: buywise
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U buywise -d buywise']
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+  migrate:
+    image: buywise-api:${BUYWISE_TAG:-local}
+    build: { context: .., dockerfile: deploy/api.Dockerfile }
+    environment:
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:?Set the migrator database URL}
+      BUYWISE_RUNTIME_PASSWORD: ${BUYWISE_RUNTIME_PASSWORD:?Set the runtime role password}
+    command: ['sh', '-ec', './migrate && psql "$${DATABASE_URL}" -X -v ON_ERROR_STOP=1 -f runtime-role.sql']
+    depends_on:
+      postgres: { condition: service_healthy }
+  api:
+    image: buywise-api:${BUYWISE_TAG:-local}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set the runtime database URL}
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:8080/readyz']
+      interval: 10s
+      timeout: 4s
+      retries: 3
+    restart: unless-stopped
+  web:
+    build: { context: .., dockerfile: deploy/web.Dockerfile }
+    environment:
+      ORIGIN: https://${BUYWISE_DOMAIN:?Set the deployment hostname}
+      API_URL: http://api:8080
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:3000/health']
+      interval: 10s
+      timeout: 4s
+      retries: 3
+    restart: unless-stopped
+  edge:
+    image: caddy:2-alpine
+    environment:
+      BUYWISE_DOMAIN: ${BUYWISE_DOMAIN:?Set the deployment hostname}
+    ports: ['80:80', '443:443']
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    depends_on:
+      web: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  postgres:
+  caddy:
