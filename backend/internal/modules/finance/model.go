@@ -35,7 +35,9 @@ var (
 	ErrCommittedIncome     = errors.New("only expense categories can be committed")
 	ErrDuplicateName       = errors.New("that name is already used")
 	ErrAlreadyVoided       = errors.New("transaction is already void")
+	ErrPurchaseManaged     = errors.New("this entry belongs to a recorded purchase")
 	ErrKeyConflict         = errors.New("idempotency key was already used for a different transaction")
+	ErrCategoryInUse       = errors.New("cannot delete category referenced by transactions; archive it instead")
 )
 
 type Kind string
@@ -66,20 +68,22 @@ type Category struct {
 	Name      string
 	Kind      Kind
 	Committed bool
+	Archived  bool
 }
 
 type Transaction struct {
-	ID             uuid.UUID
-	AccountID      uuid.UUID
-	CategoryID     uuid.UUID
-	Kind           Kind
-	AmountPaise    int64
-	OccurredOn     time.Time
-	Note           string
-	IdempotencyKey string
-	VoidedAt       *time.Time
-	VoidReason     string
-	CreatedAt      time.Time
+	PurchaseManaged bool
+	ID              uuid.UUID
+	AccountID       uuid.UUID
+	CategoryID      uuid.UUID
+	Kind            Kind
+	AmountPaise     int64
+	OccurredOn      time.Time
+	Note            string
+	IdempotencyKey  string
+	VoidedAt        *time.Time
+	VoidReason      string
+	CreatedAt       time.Time
 }
 
 func (t Transaction) Voided() bool {

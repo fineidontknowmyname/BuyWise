@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"path"
 	"sort"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,7 +19,23 @@ const createHistoryTable = `CREATE TABLE IF NOT EXISTS schema_migrations (
 )`
 
 func Apply(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS) ([]string, error) {
-	if _, err := pool.Exec(ctx, createHistoryTable); err != nil {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(58320131617011)`); err != nil {
+		closeConnection(conn)
+		return nil, fmt.Errorf("lock migrations: %w", err)
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := conn.Exec(cleanup, `SELECT pg_advisory_unlock(58320131617011)`); err != nil {
+			closeConnection(conn)
+		}
+	}()
+	if _, err := conn.Exec(ctx, createHistoryTable); err != nil {
 		return nil, fmt.Errorf("create migration history: %w", err)
 	}
 	files, err := fs.Glob(migrations, "*.sql")
@@ -30,7 +47,7 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS) ([]string,
 	var applied []string
 	for _, file := range files {
 		version := path.Base(file)
-		done, err := applyOne(ctx, pool, migrations, file, version)
+		done, err := applyOne(ctx, conn, migrations, file, version)
 		if err != nil {
 			return applied, err
 		}
@@ -41,8 +58,14 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS) ([]string,
 	return applied, nil
 }
 
-func applyOne(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS, file, version string) (bool, error) {
-	tx, err := pool.Begin(ctx)
+func closeConnection(conn *pgxpool.Conn) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = conn.Hijack().Close(ctx)
+}
+
+func applyOne(ctx context.Context, conn *pgxpool.Conn, migrations fs.FS, file, version string) (bool, error) {
+	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("begin %s: %w", version, err)
 	}

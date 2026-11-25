@@ -322,3 +322,39 @@ func TestSignedPaise(t *testing.T) {
 		t.Fatal("sign convention broken")
 	}
 }
+
+func TestCategoryUpdateAndArchive(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	cat, err := f.svc.CreateCategory(ctx, "Gaming", Expense, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := f.svc.UpdateCategory(ctx, cat.ID, "Video Games", Expense, false, true)
+	if err != nil {
+		t.Fatalf("update category: %v", err)
+	}
+	if updated.Name != "Video Games" || !updated.Archived {
+		t.Fatalf("expected updated fields, got %+v", updated)
+	}
+
+	// Delete category without transactions should succeed
+	if err := f.svc.DeleteCategory(ctx, cat.ID); err != nil {
+		t.Fatalf("delete unused category: %v", err)
+	}
+
+	// Delete category with transactions should fail with ErrCategoryInUse
+	f.spend(t, f.expense, 500, "2026-10-02", "spend-rent")
+	err = f.svc.DeleteCategory(ctx, f.expense.ID)
+	if !errors.Is(err, ErrCategoryInUse) {
+		t.Fatalf("expected ErrCategoryInUse, got: %v", err)
+	}
+
+	// But archiving it should succeed
+	archived, err := f.svc.UpdateCategory(ctx, f.expense.ID, f.expense.Name, f.expense.Kind, f.expense.Committed, true)
+	if err != nil || !archived.Archived {
+		t.Fatalf("expected archived category, got %+v, err: %v", archived, err)
+	}
+}

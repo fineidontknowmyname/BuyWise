@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/.svelte-kit
+**/build
+**/.env
+**/.env.*
+backend/bin
+backend/.phase6-test-db
+deploy/load.js
+frontend/mobile
+Docs
