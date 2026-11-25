@@ -35,8 +35,8 @@
 
 	button {
 		display: grid;
-		width: 36px;
-		height: 34px;
+		width: var(--control-height);
+		height: var(--control-height);
 		place-items: center;
 		border-radius: 999px;
 		color: var(--foreground-secondary);

@@ -19,6 +19,13 @@
 	let searchQuery = $state('');
 	let showCreateModal = $state(false);
 	let selectedPriorityFilter = $state('all');
+	let selectedStatus = $state('active');
+	const statuses = [
+		{ value: 'active', label: 'Active' },
+		{ value: 'paused', label: 'Paused' },
+		{ value: 'completed', label: 'Completed' },
+		{ value: 'all', label: 'All goals' }
+	];
 
 	// Form bindings
 	let formName = $state('');
@@ -85,6 +92,9 @@
 
 	const filteredGoals = $derived.by(() => {
 		let list = data.goals;
+		if (selectedStatus !== 'all') {
+			list = list.filter((goal) => (goal.status ?? 'active') === selectedStatus);
+		}
 		if (searchQuery.trim()) {
 			const q = searchQuery.toLowerCase();
 			list = list.filter((g) => g.name.toLowerCase().includes(q));
@@ -110,6 +120,7 @@
 			</p>
 		</div>
 		<div class="header-actions">
+			<a class="btn btn-secondary" href={resolve('/simulator')}>Try a calculation</a>
 			<button type="button" class="btn btn-primary" onclick={() => (showCreateModal = true)}>
 				<Plus size={18} />
 				<span>Create Goal</span>
@@ -119,6 +130,23 @@
 
 	<!-- Search & Filter Controls -->
 	{#if data.goals.length > 0}
+		<div class="status-filters" role="group" aria-label="Filter by goal status">
+			{#each statuses as status (status.value)}
+				<button
+					type="button"
+					class:active={selectedStatus === status.value}
+					aria-pressed={selectedStatus === status.value}
+					onclick={() => (selectedStatus = status.value)}
+				>
+					{status.label}
+					<span
+						>{data.goals.filter(
+							(goal) => status.value === 'all' || (goal.status ?? 'active') === status.value
+						).length}</span
+					>
+				</button>
+			{/each}
+		</div>
 		<div class="filter-bar">
 			<div class="search-box">
 				<Search size={16} class="search-icon" />
@@ -136,6 +164,7 @@
 					type="button"
 					class="filter-pill"
 					class:active={selectedPriorityFilter === 'all'}
+					aria-pressed={selectedPriorityFilter === 'all'}
 					onclick={() => (selectedPriorityFilter = 'all')}
 				>
 					All
@@ -144,6 +173,7 @@
 					type="button"
 					class="filter-pill"
 					class:active={selectedPriorityFilter === 'high'}
+					aria-pressed={selectedPriorityFilter === 'high'}
 					onclick={() => (selectedPriorityFilter = 'high')}
 				>
 					High Priority
@@ -152,10 +182,18 @@
 					type="button"
 					class="filter-pill"
 					class:active={selectedPriorityFilter === 'medium'}
+					aria-pressed={selectedPriorityFilter === 'medium'}
 					onclick={() => (selectedPriorityFilter = 'medium')}
 				>
 					Medium
 				</button>
+				<button
+					type="button"
+					class="filter-pill"
+					class:active={selectedPriorityFilter === 'low'}
+					aria-pressed={selectedPriorityFilter === 'low'}
+					onclick={() => (selectedPriorityFilter = 'low')}>Low</button
+				>
 			</div>
 
 			<div class="goal-count-badge">
@@ -173,7 +211,15 @@
 	{/if}
 
 	<!-- Goals Display -->
-	{#if data.goals.length === 0}
+	{#if data.error}
+		<div class="card empty-state">
+			<h2 class="empty-title">Your goals are temporarily unavailable</h2>
+			<p class="empty-text">
+				Your existing plans have not been changed. Try loading this page again.
+			</p>
+			<a class="btn btn-secondary" href={resolve('/goals')} data-sveltekit-reload>Try again</a>
+		</div>
+	{:else if data.goals.length === 0}
 		<div class="card empty-state">
 			<div class="empty-icon-box">
 				<Target size={32} />
@@ -190,14 +236,15 @@
 		</div>
 	{:else if filteredGoals.length === 0}
 		<div class="card empty-state">
-			<h4 class="empty-title">No goals match "{searchQuery}"</h4>
-			<p class="empty-text">Try searching for a different keyword or clear your filter.</p>
+			<h2 class="empty-title">No goals in this view</h2>
+			<p class="empty-text">Try another status, search term or priority, or show all your goals.</p>
 			<button
 				type="button"
 				class="btn btn-secondary btn-sm"
 				onclick={() => {
 					searchQuery = '';
 					selectedPriorityFilter = 'all';
+					selectedStatus = 'all';
 				}}
 			>
 				Clear filter
@@ -207,8 +254,11 @@
 		<div class="goals-grid">
 			{#each filteredGoals as goal (goal.id)}
 				{@const target = goal.targetPricePaise || 0}
-				{@const saved = goal.savedAmountPaise || 0}
-				{@const pct = target > 0 ? Math.min(100, Math.round((saved / target) * 100)) : 0}
+				{@const saved = goal.savedAmountPaise ?? null}
+				{@const pct =
+					target > 0 && saved !== null
+						? Math.max(0, Math.min(100, Math.round((saved / target) * 100)))
+						: null}
 				{@const priority = goal.priority || 'medium'}
 
 				<a href={resolve('/goals/[id]', { id: goal.id })} class="goal-card">
@@ -226,14 +276,32 @@
 
 					{#if target > 0}
 						<div class="progress-section">
-							<div class="progress-bar-bg">
-								<div class="progress-bar-fill" style="width: {pct}%;"></div>
-							</div>
+							{#if pct !== null}
+								<div
+									class="progress-bar-bg"
+									role="progressbar"
+									aria-label="Recorded savings for {goal.name}"
+									aria-valuemin="0"
+									aria-valuemax="100"
+									aria-valuenow={pct}
+								>
+									<div class="progress-bar-fill" style:width={pct + '%'}></div>
+								</div>
+							{/if}
 							<div class="progress-numbers">
-								<span class="saved-amt">{formatRupees(saved)} saved</span>
-								<span class="target-amt">Target: {formatRupees(target)} ({pct}%)</span>
+								<span class="saved-amt"
+									>{saved === null
+										? 'Savings unavailable'
+										: formatRupees(saved) + ' recorded'}</span
+								>
+								<span class="target-amt"
+									>Target: {formatRupees(target)}{pct === null ? '' : ` (${pct}%)`}</span
+								>
 							</div>
+							<p class="progress-note">Funding coverage is checked inside your goal.</p>
 						</div>
+					{:else}
+						<p class="progress-note">Add a target price to start planning.</p>
 					{/if}
 
 					<div class="goal-meta">
@@ -253,7 +321,7 @@
 					<div class="goal-card-footer">
 						<span class="evaluate-label">
 							<Sparkles size={14} />
-							<span>Evaluate Decision</span>
+							<span>View goal & plan</span>
 						</span>
 						<div class="arrow-circle">
 							<ArrowRight size={16} />
@@ -439,6 +507,35 @@
 </Modal>
 
 <style>
+	.header-actions,
+	.status-filters {
+		display: flex;
+		gap: var(--space-2);
+		flex-wrap: wrap;
+	}
+	.status-filters {
+		padding-bottom: var(--space-4);
+		border-bottom: 1px solid var(--border);
+	}
+	.status-filters button {
+		min-height: var(--control-height);
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-control);
+		color: var(--foreground-secondary);
+		font-size: var(--text-small);
+	}
+	.status-filters button.active {
+		background: var(--primary);
+		color: var(--primary-foreground);
+	}
+	.status-filters span {
+		margin-inline-start: var(--space-2);
+		font-variant-numeric: tabular-nums;
+	}
+	.progress-note {
+		color: var(--foreground-secondary);
+		font-size: var(--text-caption);
+	}
 	.url-input-row {
 		display: flex;
 		gap: 8px;
@@ -593,7 +690,7 @@
 
 	.search-box {
 		flex: 1;
-		min-width: 240px;
+		min-width: min(240px, 100%);
 		position: relative;
 		display: flex;
 		align-items: center;
@@ -614,9 +711,11 @@
 	.priority-filters {
 		display: flex;
 		gap: 6px;
+		flex-wrap: wrap;
 	}
 
 	.filter-pill {
+		min-height: var(--control-height);
 		padding: 6px 12px;
 		border-radius: 999px;
 		border: 1px solid var(--border-color);
@@ -629,7 +728,7 @@
 
 	.filter-pill.active {
 		background-color: var(--primary-blue);
-		color: #ffffff;
+		color: var(--primary-foreground);
 		border-color: var(--primary-blue);
 	}
 
@@ -641,7 +740,7 @@
 
 	.goals-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
 		gap: 20px;
 	}
 
@@ -669,6 +768,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: var(--space-2);
+		flex-wrap: wrap;
 	}
 
 	.goal-badge {
@@ -686,6 +787,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
+		flex-wrap: wrap;
 	}
 
 	.badge-priority {
@@ -730,6 +832,7 @@
 		font-weight: 600;
 		color: var(--text-primary);
 		line-height: 1.3;
+		overflow-wrap: anywhere;
 	}
 
 	.progress-section {
@@ -758,6 +861,8 @@
 		justify-content: space-between;
 		font-size: 12px;
 		font-variant-numeric: tabular-nums;
+		gap: var(--space-2);
+		flex-wrap: wrap;
 	}
 
 	.saved-amt {
@@ -881,6 +986,7 @@
 		color: var(--text-primary);
 		font-size: 14px;
 		outline: none;
+		min-height: var(--control-height);
 	}
 
 	.input:focus {
@@ -899,5 +1005,20 @@
 	.form-error {
 		color: var(--danger);
 		font-size: 13px;
+	}
+	@media (max-width: 640px) {
+		.form-grid-2 {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.url-input-row {
+			flex-wrap: wrap;
+		}
+		.url-field {
+			flex-basis: 100%;
+			min-width: 0;
+		}
+		.goal-card {
+			padding: var(--space-4);
+		}
 	}
 </style>

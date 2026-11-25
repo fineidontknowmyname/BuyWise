@@ -28,6 +28,7 @@
 	];
 	let rows = $state(untrack(readRows));
 	let loadedRevision = $state(untrack(() => data.foundation?.profile.revision));
+	let savingProfile = $state(false);
 	function readRows() {
 		return (data.foundation?.profile.items ?? []).map((item) => ({
 			name: item.name,
@@ -45,10 +46,30 @@
 	});
 </script>
 
-<svelte:head><title>My finances | BuyWise</title></svelte:head>
+<svelte:head><title>Financial setup | BuyWise</title></svelte:head>
 
-<h1>My finances</h1>
-<p>Enter your financial assumptions manually and record transfers between your accounts.</p>
+<div class="setup-heading">
+	<p class="eyebrow">My Money</p>
+	<h1>Financial setup</h1>
+	<p>
+		Plan with your income and expected outflows. Recorded account balances and expenses stay
+		separate.
+	</p>
+</div>
+<div class="money-guide" aria-label="How My Money works">
+	<div>
+		<strong>Setup</strong>
+		<p>What you expect to earn and spend.</p>
+	</div>
+	<div>
+		<strong>Accounts & expenses</strong>
+		<p>The balances and spending you record.</p>
+	</div>
+	<div>
+		<strong>Budgets</strong>
+		<p>How much you intend to spend by category.</p>
+	</div>
+</div>
 {#if data.error || form?.error}<p role="alert">{form?.error ?? data.error}</p>{/if}
 {#if form?.success}<p role="status">{form.success}</p>{/if}
 
@@ -56,12 +77,19 @@
 	{@const foundation = data.foundation}
 	{@const profile = foundation.profile}
 	{@const estimates = foundation.capacity}
-	<section>
-		<h2>Safe monthly savings</h2>
+	<section class="capacity-card" aria-labelledby="capacity-title">
+		<div class="section-header">
+			<h2 id="capacity-title">Monthly saving estimate</h2>
+			<span class="estimate-label">Planning estimate</span>
+		</div>
 		{#if profile.revision === 0}
 			<p>Save your financial profile to calculate an estimate.</p>
 		{:else}
 			<p class="total">{formatRupees(estimates.safeSavingsPaise)}</p>
+			<p class="estimate-note">
+				Per month, before goal allocations. This is an estimate, not money available in your
+				accounts.
+			</p>
 			<dl>
 				<dt>Fixed income</dt>
 				<dd>{formatRupees(estimates.fixedIncomePaise)}</dd>
@@ -81,14 +109,25 @@
 	</section>
 
 	<section>
-		<h2>Financial profile</h2>
+		<h2>Income & planned outflows</h2>
+		<p class="section-description">
+			Edit an amount below or add an entry. Saving updates your current assumptions; it does not
+			record a payment or schedule a future change.
+		</p>
 		<form
 			method="POST"
 			action="?/profile"
-			use:enhance={() =>
-				async ({ update }) => {
-					await update({ reset: false });
-				}}
+			use:enhance={() => {
+				savingProfile = true;
+				return async ({ update }) => {
+					try {
+						await update({ reset: false });
+					} finally {
+						savingProfile = false;
+					}
+				};
+			}}
+			aria-busy={savingProfile}
 		>
 			<input type="hidden" name="revision" value={profile.revision} />
 			{#each rows as row, index (row)}
@@ -123,7 +162,8 @@
 					>
 					<button
 						type="button"
-						class="btn"
+						class="btn btn-secondary"
+						aria-label={'Remove ' + (row.name || `entry ${index + 1}`)}
 						onclick={() => {
 							rows.splice(index, 1);
 						}}>Remove entry</button
@@ -132,7 +172,7 @@
 			{/each}
 			<button
 				type="button"
-				class="btn"
+				class="btn btn-secondary"
 				disabled={rows.length >= 100}
 				onclick={() => {
 					rows.push({ name: '', kind: 'fixed_income', frequency: 'monthly', amount: '' });
@@ -186,7 +226,9 @@
 					>
 				</div>
 			{/key}
-			<button class="btn btn-primary">Save profile</button>
+			<button class="btn btn-primary" disabled={savingProfile}
+				>{savingProfile ? 'Saving setup…' : 'Save financial setup'}</button
+			>
 		</form>
 	</section>
 
@@ -285,11 +327,65 @@
 {/if}
 
 <style>
+	.setup-heading {
+		display: grid;
+		gap: var(--space-2);
+		margin-bottom: var(--space-6);
+	}
+	.setup-heading > p,
+	.section-description,
+	.estimate-note {
+		color: var(--foreground-secondary);
+	}
+	.eyebrow {
+		font-size: var(--text-small);
+		font-weight: 600;
+	}
+	.money-guide {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: var(--space-4);
+	}
+	.money-guide > div {
+		padding: var(--space-4);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-control);
+	}
+	.money-guide p {
+		margin-top: var(--space-1);
+		font-size: var(--text-small);
+		color: var(--foreground-secondary);
+	}
+	.section-header {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--space-3);
+		flex-wrap: wrap;
+	}
+	.estimate-label {
+		font-size: var(--text-caption);
+		padding: var(--space-1) var(--space-2);
+		border-radius: 999px;
+		background: var(--accent-subtle);
+	}
+	.estimate-note,
+	.section-description {
+		margin-bottom: var(--space-4);
+	}
+	.capacity-card {
+		border-inline-start: 4px solid var(--brand-dot);
+	}
+	@media (max-width: 640px) {
+		.money-guide {
+			grid-template-columns: minmax(0, 1fr);
+		}
+	}
 	section {
 		margin-block: 1.25rem;
 		padding: clamp(1rem, 3vw, 1.5rem);
 		border: 1px solid var(--border);
-		border-radius: 14px;
+		border-radius: var(--radius-card);
 		background: var(--surface);
 	}
 	h2,
@@ -316,6 +412,7 @@
 	}
 	input:not([type='hidden']),
 	select {
+		min-height: var(--control-height);
 		color: var(--foreground);
 		background: var(--background);
 		border: 1px solid var(--border);
@@ -332,6 +429,8 @@
 	dd {
 		margin: 0;
 		text-align: right;
+		font-variant-numeric: tabular-nums;
+		overflow-wrap: anywhere;
 	}
 	.total {
 		font-weight: 700;

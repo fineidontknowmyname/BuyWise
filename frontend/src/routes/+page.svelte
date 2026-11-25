@@ -22,8 +22,6 @@
 	let showGoalModal = $state(false);
 	let showQuickExpenseModal = $state(false);
 
-	const labels = { up: 'Up', down: 'Down', unknown: 'Unknown' };
-
 	const greeting = $derived(
 		data.hour < 12 ? 'Good morning' : data.hour < 17 ? 'Good afternoon' : 'Good evening'
 	);
@@ -37,11 +35,27 @@
 		data.foundation?.profile.revision ? data.foundation.capacity.safeSavingsPaise : null
 	);
 	const metrics = $derived([
-		{ label: 'Monthly income', icon: Wallet, amount: data.weeks ? data.monthlyIncomePaise : null },
-		{ label: 'Monthly expenses', icon: List, amount: data.weeks ? data.monthlyExpensePaise : null },
-		{ label: 'Safe savings capacity', icon: TrendingUp, amount: capacity },
 		{
-			label: 'Goal savings',
+			label: 'Recorded income',
+			detail: 'This month · entered records',
+			icon: Wallet,
+			amount: data.weeks ? data.monthlyIncomePaise : null
+		},
+		{
+			label: 'Recorded expenses',
+			detail: 'This month · entered records',
+			icon: List,
+			amount: data.weeks ? data.monthlyExpensePaise : null
+		},
+		{
+			label: 'Monthly saving estimate',
+			detail: 'Based on your financial setup',
+			icon: TrendingUp,
+			amount: capacity
+		},
+		{
+			label: 'Recorded goal savings',
+			detail: 'Active goals · backing checked separately',
 			icon: Target,
 			amount: data.goalsAvailable ? data.totalSavingsPaise : null
 		}
@@ -74,6 +88,12 @@
 	let newGoalUrl = $state('');
 	let isAnalyzingUrl = $state(false);
 	let extractUrlError = $state('');
+	$effect(() => {
+		if (form?.error) {
+			showGoalModal = true;
+			newGoalName = form.name ?? '';
+		}
+	});
 
 	async function analyzeGoalUrl() {
 		if (!newGoalUrl.trim()) return;
@@ -131,6 +151,48 @@
 		<p class="dashboard-alert" role="alert">Some dashboard figures are temporarily unavailable.</p>
 	{/if}
 
+	<section class="next-step" aria-labelledby="next-step-title">
+		<div>
+			<p class="eyebrow">Your next step</p>
+			{#if !data.goalsAvailable}
+				<h2 id="next-step-title">Reconnect with your purchase plans</h2>
+				<p>Your goals could not be loaded. Open Purchase goals to try again.</p>
+			{:else if !data.goals.length}
+				<h2 id="next-step-title">What would you like to save for?</h2>
+				<p>Start with a purchase goal. Add a target and build a saving plan at your own pace.</p>
+			{:else if !data.foundation}
+				<h2 id="next-step-title">Your financial setup is temporarily unavailable</h2>
+				<p>You can still open your goals. Refresh your setup before relying on an estimate.</p>
+			{:else if !data.foundation.profile.revision}
+				<h2 id="next-step-title">Give your plan some financial context</h2>
+				<p>Add income and planned outflows to estimate your monthly saving capacity.</p>
+			{:else}
+				<h2 id="next-step-title">
+					Keep {data.milestone?.name ?? 'your next purchase'} moving forward
+				</h2>
+				<p>
+					Review your contribution plan. Recorded savings and purchase readiness are checked
+					separately.
+				</p>
+			{/if}
+		</div>
+		{#if !data.goalsAvailable}
+			<a class="btn btn-accent" href={resolve('/goals')}>Open goals <ArrowRight size={16} /></a>
+		{:else if !data.goals.length}
+			<button type="button" class="btn btn-accent" onclick={() => (showGoalModal = true)}
+				>Create a goal <Plus size={16} /></button
+			>
+		{:else if data.foundation && !data.foundation.profile.revision}
+			<a class="btn btn-accent" href={resolve('/finances')}
+				>Set up My Money <ArrowRight size={16} /></a
+			>
+		{:else if data.milestone}
+			<a class="btn btn-accent" href={resolve('/goals/[id]/plan', { id: data.milestone.id })}
+				>Review saving plan <ArrowRight size={16} /></a
+			>
+		{/if}
+	</section>
+
 	<dl class="summary-strip" aria-label="Financial overview">
 		{#each metrics as metric (metric.label)}
 			<div>
@@ -138,6 +200,7 @@
 				<dd class:unavailable={metric.amount === null}>
 					{metric.amount === null ? 'Unavailable' : amountLabel(metric.amount)}
 				</dd>
+				<p class="metric-detail">{metric.detail}</p>
 			</div>
 		{/each}
 	</dl>
@@ -166,7 +229,7 @@
 									><span style:width={percent + '%'}></span></span
 								>
 								<span class="muted"
-									>Saved {amountLabel(saved)}{target ? ' of ' + amountLabel(target) : ''}</span
+									>Recorded {amountLabel(saved)}{target ? ' of ' + amountLabel(target) : ''}</span
 								>
 							</a>
 						</li>
@@ -183,6 +246,16 @@
 				</p>
 				<h2 class="verdict">{decision.state.replaceAll('_', ' ')}</h2>
 				<p class="muted">{verdictCopy[decision.state]}</p>
+				<dl class="readiness-axes">
+					<div>
+						<dt>Financial assessment</dt>
+						<dd>{decision.finance.state.replaceAll('_', ' ').toLowerCase()}</dd>
+					</div>
+					<div>
+						<dt>Price assessment</dt>
+						<dd>{decision.price.state.replaceAll('_', ' ').toLowerCase()}</dd>
+					</div>
+				</dl>
 				{#if data.workspacePreferences?.priceUpdates !== false && decision.checkoutPaise !== null}
 					<p class="muted">
 						Checkout {amountLabel(decision.checkoutPaise)}{#if decision.selectedOffer?.observedOn}
@@ -255,7 +328,7 @@
 		<section class="card position">
 			<div class="section-heading">
 				<h2>Financial position</h2>
-				<a href={resolve('/finances')}>View profile</a>
+				<a href={resolve('/finances')}>Financial setup</a>
 			</div>
 			<dl>
 				<div>
@@ -285,15 +358,11 @@
 		</section>
 	</div>
 
-	<div
-		class="service-status"
-		class:service-warning={data.health.api !== 'up' || data.health.database !== 'up'}
-	>
-		<span>API <strong data-testid="api-status">{labels[data.health.api]}</strong></span>
-		<span
-			>Database <strong data-testid="database-status">{labels[data.health.database]}</strong></span
-		>
-	</div>
+	{#if data.health.api !== 'up' || data.health.database !== 'up'}
+		<p class="connection-note" role="status">
+			Some BuyWise services are unavailable. Check the notices above before using your figures.
+		</p>
+	{/if}
 </div>
 
 <Modal isOpen={showGoalModal} title="New Purchase Goal" onclose={() => (showGoalModal = false)}>
@@ -366,6 +435,54 @@
 	.dashboard-page {
 		display: grid;
 		gap: 20px;
+	}
+	.next-step {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: var(--space-6);
+		padding: var(--space-6);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-card);
+		background: var(--surface);
+		box-shadow: inset 4px 0 var(--brand-dot);
+	}
+	.next-step > div {
+		flex: 1 1 280px;
+		min-width: 0;
+	}
+	.next-step h2 {
+		margin-block: var(--space-1) var(--space-2);
+		font-size: clamp(1.25rem, 2vw, 1.6rem);
+		overflow-wrap: anywhere;
+	}
+	.next-step p:not(.eyebrow),
+	.metric-detail,
+	.connection-note {
+		color: var(--foreground-secondary);
+	}
+	.eyebrow {
+		color: var(--foreground-muted);
+		font-size: var(--text-small);
+		font-weight: 600;
+	}
+	.metric-detail {
+		margin-top: var(--space-2);
+		font-size: var(--text-caption);
+		line-height: 1.5;
+	}
+	.readiness-axes {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-4);
+	}
+	.readiness-axes dt {
+		font-size: var(--text-caption);
+	}
+	.readiness-axes dd {
+		font-weight: 600;
+		text-transform: capitalize;
 	}
 	.overview-heading,
 	.overview-actions,
@@ -605,16 +722,6 @@
 		font-family: var(--font-mono);
 		text-align: end;
 		overflow-wrap: anywhere;
-	}
-	.service-status {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 16px;
-		font-size: 0.8rem;
-		color: var(--foreground-muted);
-	}
-	.service-warning {
-		color: var(--warning-foreground);
 	}
 	.url-input-row {
 		display: flex;

@@ -1,55 +1,39 @@
 <script lang="ts">
 	import '../app.css';
-	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import favicon from '#lib/assets/favicon.svg';
 	import Sidebar from '#lib/components/Sidebar.svelte';
 	import Header from '#lib/components/Header.svelte';
+	import MobileNavigation from '#lib/components/MobileNavigation.svelte';
+	import MoneyNavigation from '#lib/components/MoneyNavigation.svelte';
 	import Toast from '#lib/components/Toast.svelte';
+	import { isMoneyPath } from '#lib/navigation.js';
 	import type { LayoutProps } from './$types';
 
 	let { children, data }: LayoutProps = $props();
 	let desktop = $state(false);
-	let menuOpen = $state(false);
+	let menuOpen = $state(true);
 
 	$effect(() => {
 		const viewport = window.matchMedia('(min-width: 1024px)');
 		function update() {
 			desktop = viewport.matches;
-			menuOpen = desktop;
 		}
 		update();
 		viewport.addEventListener('change', update);
 		return () => viewport.removeEventListener('change', update);
 	});
 
-	function closeMenu(restoreFocus = false) {
-		menuOpen = false;
-		if (restoreFocus) document.getElementById('navigation-toggle')?.focus();
-	}
-
-	async function toggleMenu() {
-		if (menuOpen) {
-			closeMenu();
-			return;
-		}
-		menuOpen = true;
-		if (!desktop) {
-			await tick();
-			document.querySelector<HTMLElement>('#app-navigation a')?.focus();
-		}
-	}
-
 	function handleKey(event: KeyboardEvent) {
-		const focus = document.activeElement;
 		if (
 			event.key === 'Escape' &&
+			desktop &&
 			menuOpen &&
-			(!desktop ||
-				focus?.id === 'navigation-toggle' ||
-				document.getElementById('app-navigation')?.contains(focus))
+			(document.activeElement?.id === 'navigation-toggle' ||
+				document.getElementById('app-navigation')?.contains(document.activeElement))
 		) {
-			closeMenu(true);
+			menuOpen = false;
+			document.getElementById('navigation-toggle')?.focus();
 		}
 	}
 </script>
@@ -68,50 +52,25 @@
 	{@render children()}
 {:else}
 	<div class="app-shell" class:reduced-motion={data.workspacePreferences?.reducedMotion}>
+		<a class="skip-link" href="#main-content">Skip to content</a>
 		<Header
 			{menuOpen}
 			reducedMotion={data.workspacePreferences?.reducedMotion}
-			ontoggle={toggleMenu}
+			ontoggle={() => (menuOpen = !menuOpen)}
 		/>
-		<div class="app-body">
-			<Sidebar
-				isOpen={menuOpen}
-				onfollow={() => {
-					if (!desktop) closeMenu();
-				}}
-			/>
-			{#if menuOpen && !desktop}
-				<button
-					class="navigation-scrim"
-					type="button"
-					tabindex="-1"
-					aria-label="Dismiss navigation menu"
-					onclick={() => closeMenu(true)}
-				></button>
-			{/if}
-			<main class="content-container" inert={menuOpen && !desktop}>
+		<div class="app-body" class:sidebar-open={menuOpen}>
+			<Sidebar isOpen={desktop && menuOpen} />
+			<main id="main-content" class="content-container" tabindex="-1">
+				{#if isMoneyPath(page.url.pathname)}<MoneyNavigation />{/if}
 				{@render children()}
 			</main>
 		</div>
+		<MobileNavigation />
 	</div>
-
 	<Toast />
 {/if}
 
 <style>
-	.navigation-scrim {
-		display: none;
-	}
-	@media (width < 1024px) {
-		.navigation-scrim {
-			display: block;
-			position: fixed;
-			inset: var(--topbar-height) 0 0;
-			z-index: 40;
-			border: 0;
-			background: rgb(0 0 0 / 42%);
-		}
-	}
 	.reduced-motion :global(*) {
 		animation-duration: 0.01ms !important;
 		transition-duration: 0.01ms !important;

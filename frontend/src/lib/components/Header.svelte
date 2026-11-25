@@ -39,8 +39,8 @@
 
 	.menu-toggle {
 		flex: none;
-		width: 42px;
-		height: 42px;
+		width: var(--control-height);
+		height: var(--control-height);
 		background: var(--surface);
 		color: var(--foreground);
 	}
@@ -77,6 +77,17 @@
 	@media (max-width: 720px) {
 		.wordmark small {
 			display: none;
+		}
+	}
+	@media (width < 1024px) {
+		.menu-toggle {
+			display: none;
+		}
+		.wordmark {
+			justify-content: flex-start;
+			padding-inline: 0;
+			border: 0;
+			background: transparent;
 		}
 	}
 </style>

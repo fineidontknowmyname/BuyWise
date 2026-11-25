@@ -110,7 +110,8 @@ export const load: PageServerLoad = async ({ fetch }) => {
 		activity: activity.ok ? activity.data.events.slice(0, 6) : null,
 		milestone,
 		decision: decision?.ok ? decision.data : null,
-		loadIncomplete: !goalsRes.ok || !ledgerComplete || !budgetsRes.ok,
+		loadIncomplete:
+			!goalsRes.ok || !ledgerComplete || !budgetsRes.ok || !foundation.ok || !activity.ok,
 		health,
 		goals,
 		accounts,

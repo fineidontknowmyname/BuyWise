@@ -1,87 +1,43 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { LogOut } from '@lucide/svelte';
 	import {
-		LayoutDashboard,
-		Sparkles,
-		Target,
-		ShoppingBag,
-		Calculator,
-		Wallet,
-		UserRound,
-		Activity,
-		LogOut
-	} from '@lucide/svelte';
+		primaryNavigation,
+		supportingNavigation,
+		moneyLinks,
+		isMoneyPath,
+		isNavigationActive,
+		isMoneyLinkActive
+	} from '#lib/navigation.js';
 
-	let {
-		isOpen = false,
-		onfollow
-	}: {
-		isOpen?: boolean;
-		onfollow?: () => void;
-	} = $props();
-
-	const financeLinks = [
-		{ href: resolve('/accounts'), label: 'Accounts' },
-		{ href: resolve('/expenses'), label: 'Expenses' },
-		{ href: resolve('/budget'), label: 'Budget & Categories' },
-		{ href: resolve('/reports'), label: 'Reports' }
-	];
-	const navItems = [
-		{ href: resolve('/'), label: 'Overview', icon: LayoutDashboard, exact: true },
-		{ href: resolve('/goals'), label: 'Purchase Goals', icon: Target },
-		{ href: resolve('/finances'), label: 'My Finances', icon: Wallet, children: financeLinks },
-		{ href: resolve('/products'), label: 'Products & Prices', icon: ShoppingBag },
-		{ href: resolve('/simulator'), label: 'Reverse EMI', icon: Calculator },
-		{ href: resolve('/activity'), label: 'Activity', icon: Activity },
-		{ href: resolve('/ai'), label: 'AI Assist', icon: Sparkles },
-		{ href: resolve('/profile'), label: 'Profile', icon: UserRound }
-	];
-
-	function isActive(href: string, exact = false) {
-		const current = page.url.pathname;
-		if (exact) return current === href;
-		if (
-			href === resolve('/budget') &&
-			(current === '/budget' || current === '/budgets' || current === '/categories')
-		)
-			return true;
-		return current === href || (href !== '/' && current.startsWith(href + '/'));
-	}
+	let { isOpen = false }: { isOpen?: boolean } = $props();
 </script>
 
 <aside id="app-navigation" class="sidebar-container" class:open={isOpen} inert={!isOpen}>
-	<a href={resolve('/')} class="sidebar-brand" onclick={onfollow}>
-		BuyWise<span>.</span>
-	</a>
+	<p class="navigation-heading">Your workspace</p>
 	<nav aria-label="Main navigation">
 		<ul class="nav-list">
-			{#each navItems as item (item.href)}
-				{@const active = isActive(item.href, item.exact)}
+			{#each primaryNavigation as item (item.href)}
 				<li>
 					<a
 						href={item.href}
 						class="nav-link"
-						class:active
-						aria-current={active ? 'page' : undefined}
-						onclick={onfollow}
+						class:active={isNavigationActive(page.url.pathname, item.href)}
+						aria-current={page.url.pathname === item.href ? 'page' : undefined}
 					>
-						<span class="nav-icon"><item.icon size={16} /></span>
-						{item.label}
+						<item.icon size={19} aria-hidden="true" />{item.label}
 					</a>
-					{#if item.children && (active || item.children.some((child) => isActive(child.href)))}
+					{#if item.shortLabel === 'My Money' && isMoneyPath(page.url.pathname)}
 						<ul class="subnav">
-							{#each item.children as child (child.href)}
+							{#each moneyLinks as child (child.href)}
 								<li>
 									<a
-										class="nav-link"
-										class:active={isActive(child.href)}
-										aria-current={isActive(child.href) ? 'page' : undefined}
 										href={child.href}
-										onclick={onfollow}
+										class="nav-link"
+										class:active={isMoneyLinkActive(page.url.pathname, child.href)}
+										aria-current={page.url.pathname === child.href ? 'page' : undefined}
+										>{child.label}</a
 									>
-										{child.label}
-									</a>
 								</li>
 							{/each}
 						</ul>
@@ -90,71 +46,83 @@
 			{/each}
 		</ul>
 	</nav>
-
+	<div class="supporting-navigation">
+		<p class="navigation-heading">Tools & preferences</p>
+		<nav aria-label="Tools and preferences">
+			<ul class="nav-list">
+				{#each supportingNavigation as item (item.href)}
+					<li>
+						<a
+							href={item.href}
+							class="nav-link"
+							class:active={isNavigationActive(page.url.pathname, item.href)}
+							aria-current={page.url.pathname === item.href ? 'page' : undefined}
+						>
+							<item.icon size={19} aria-hidden="true" />{item.label}
+						</a>
+					</li>
+				{/each}
+			</ul>
+		</nav>
+	</div>
 	<form method="POST" action="/sign-out">
-		<button type="submit" class="nav-link">
-			<span class="nav-icon"><LogOut size={16} /></span>
-			Sign out
-		</button>
+		<button type="submit" class="nav-link"><LogOut size={19} aria-hidden="true" />Sign out</button>
 	</form>
 </aside>
 
 <style>
-	.sidebar-brand {
-		display: inline-flex;
-		padding: 3px 10px 16px;
-		font: 700 1.35rem var(--font-mono);
-	}
-	.sidebar-brand span {
-		color: var(--brand-dot);
+	.navigation-heading {
+		padding: var(--space-2) var(--space-3);
+		color: var(--foreground-muted);
+		font-size: var(--text-caption);
+		font-weight: 600;
 	}
 	.nav-list,
 	.subnav {
 		display: grid;
-		gap: 3px;
+		gap: var(--space-1);
 		list-style: none;
-	}
-	.subnav {
-		padding: 3px 0 3px 36px;
 	}
 	.nav-link {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		min-height: 40px;
-		padding: 6px 8px;
+		gap: var(--space-3);
+		min-height: var(--control-height);
+		padding: var(--space-2) var(--space-3);
 		border: 1px solid transparent;
-		border-radius: 12px;
+		border-radius: var(--radius-control);
 		color: var(--foreground-secondary);
+		font-size: var(--text-small);
 		text-align: left;
 		transition:
-			background-color 0.2s,
-			color 0.2s,
-			border-color 0.2s;
+			background-color var(--transition-fast),
+			color var(--transition-fast);
 	}
-	.nav-link:hover,
+	.nav-link:hover {
+		background: var(--surface-hover);
+		color: var(--foreground);
+	}
 	.nav-link.active {
 		background: var(--surface);
 		color: var(--foreground);
 		border-color: var(--border);
-	}
-	.nav-link.active {
+		box-shadow: inset 3px 0 var(--brand-dot);
 		font-weight: 600;
 	}
-	.nav-icon {
-		display: grid;
-		place-items: center;
-		width: 29px;
-		height: 29px;
+	.nav-link :global(svg) {
 		flex: none;
-		border: 1px solid #333;
-		border-radius: 9px;
-		background: #0d0d0d;
-		color: var(--accent);
+	}
+	.subnav {
+		margin: var(--space-1) 0 var(--space-2) var(--space-4);
+		padding-inline-start: var(--space-2);
+		border-inline-start: 1px solid var(--border);
+	}
+	.supporting-navigation {
+		margin-top: var(--space-6);
 	}
 	form {
 		margin-top: auto;
-		padding-top: 18px;
+		padding-top: var(--space-6);
 	}
 	form button {
 		width: 100%;
