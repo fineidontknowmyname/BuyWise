@@ -20,3 +20,5 @@ reverse-engineering/
 /frontend/src/lib/expenseImport.spec.ts
 /backend/.expense-v2-testdb/
 /backend/.expense-v2-test-server.log
+/backend/internal/modules/pricing/listing_extract_test.go
+/frontend/src/lib/productListing.spec.ts

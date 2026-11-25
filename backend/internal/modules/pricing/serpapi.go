@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,10 +27,12 @@ var errProviderQuota = errors.New("price provider budget exhausted")
 var errProviderCredentials = errors.New("price provider credentials rejected")
 
 type SerpAPI struct {
-	pool   *pgxpool.Pool
-	client *http.Client
-	origin string
-	key    string
+	pool      *pgxpool.Pool
+	client    *http.Client
+	origin    string
+	key       string
+	previewMu sync.Mutex
+	previews  map[string]cachedListingPreview
 }
 
 func NewSerpAPI(pool *pgxpool.Pool, key string) *SerpAPI {
@@ -95,6 +98,19 @@ type serpProduct struct {
 		Created string `json:"created_at"`
 	} `json:"search_metadata"`
 	Product struct {
+		Title      string `json:"title"`
+		Brand      string `json:"brand"`
+		Thumbnail  string `json:"thumbnail"`
+		Categories []struct {
+			Name string `json:"name"`
+		} `json:"categories"`
+		Variants []struct {
+			Title string `json:"title"`
+			Items []struct {
+				Name     string `json:"name"`
+				Selected bool   `json:"selected"`
+			} `json:"items"`
+		} `json:"variants"`
 		ASIN  string `json:"asin"`
 		Link  string `json:"link_clean"`
 		Stock string `json:"stock"`

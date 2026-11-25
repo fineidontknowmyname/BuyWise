@@ -1,5 +1,4 @@
-import { fail, redirect } from '@sveltejs/kit';
-import { resolve } from '$app/paths';
+import { createPurchaseGoal } from '#lib/server/createPurchaseGoal.js';
 import {
 	apiRequest,
 	type Account,
@@ -125,20 +124,4 @@ export const load: PageServerLoad = async ({ fetch }) => {
 	};
 };
 
-export const actions: Actions = {
-	createGoal: async ({ request, fetch }) => {
-		const form = await request.formData();
-		const name = String(form.get('name') ?? '').trim();
-		if (!name) {
-			return fail(400, { name, error: 'Please enter a goal name.' });
-		}
-		const result = await apiRequest<Goal>(fetch, apiUrl(), '/goals', {
-			method: 'POST',
-			body: JSON.stringify({ name })
-		});
-		if (!result.ok) {
-			return fail(result.status, { name, error: result.error.message });
-		}
-		redirect(303, resolve('/goals/[id]', { id: result.data.id }));
-	}
-};
+export const actions: Actions = { createGoal: createPurchaseGoal };

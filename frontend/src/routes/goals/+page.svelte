@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import Modal from '#lib/components/Modal.svelte';
+	import ProductListingPreview from '#lib/components/ProductListingPreview.svelte';
+	import { fillListingField, listingPrice, type ProductListing } from '#lib/productListing.js';
 	import { formatRupees } from '#lib/money.js';
 	import type { PageProps } from './$types';
 	import {
@@ -40,12 +42,21 @@
 
 	// Product extraction state
 	let isExtracting = $state(false);
-	let extractedData = $state<{ url: string; retailer: string } | null>(null);
+	let extractedData = $state<ProductListing | null>(null);
 	let extractError = $state('');
+	let variantConfirmed = $state(false);
+	const currentListing = $derived(extractedData?.url === formProductUrl ? extractedData : null);
+	$effect(() => {
+		void formProductUrl;
+		void formVariant;
+		void formProductName;
+		variantConfirmed = false;
+	});
 
 	async function analyzeProductUrl() {
 		const raw = formProductUrl.trim();
-		if (!raw) return;
+		if (!raw || isExtracting) return;
+		const previous = extractedData;
 
 		isExtracting = true;
 		extractError = '';
@@ -59,12 +70,17 @@
 			});
 
 			const data = await res.json();
+			if (formProductUrl.trim() !== raw || !showCreateModal) return;
 			if (!res.ok) {
 				extractError = data.error || 'Could not validate the retailer link.';
 				return;
 			}
 
 			extractedData = data;
+			formProductName = fillListingField(formProductName, previous?.name, data.name);
+			formVariant = fillListingField(formVariant, previous?.variant, data.variant);
+			if (!formName && data.name) formName = `Buy ${data.name}`.slice(0, 200);
+			if (String(formTargetPrice ?? '').trim() === '') formTargetPrice = listingPrice(data);
 			formProductUrl = data.url;
 		} catch (err: unknown) {
 			extractError = err instanceof Error ? err.message : 'Could not validate the retailer link.';
@@ -80,6 +96,7 @@
 			if (prod) {
 				if (!formName) formName = `Buy ${prod.name}`;
 				formProductName = prod.name;
+				formVariant = prod.variant ?? '';
 				formProductUrl = prod.url;
 				formTargetPrice = (
 					prod.targetPricePaise || prod.currentPricePaise
@@ -370,10 +387,10 @@
 				>
 					{#if isExtracting}
 						<Clock size={15} class="animate-spin" />
-						<span>Checking link...</span>
+						<span>Fetching details...</span>
 					{:else}
 						<Sparkles size={15} />
-						<span>Check retailer link</span>
+						<span>Fetch product details</span>
 					{/if}
 				</button>
 			</div>
@@ -384,18 +401,18 @@
 		{#if isExtracting}
 			<div class="extract-loading-box">
 				<Clock size={16} class="animate-spin" />
-				<span>Checking the retailer link...</span>
+				<span>Fetching product details...</span>
 			</div>
 		{:else if extractError}
 			<div class="extract-error-box">
 				<AlertCircle size={16} />
 				<span>{extractError} (You can enter product details manually below).</span>
 			</div>
-		{:else if extractedData}
-			<p role="status">
-				Link validated for {extractedData.retailer}. Check the listing and enter the exact variant.
-			</p>
+		{:else if currentListing}
+			<ProductListingPreview listing={currentListing} />
 		{/if}
+		<input type="hidden" name="imageUrl" value={currentListing?.imageUrl ?? ''} />
+		<input type="hidden" name="brand" value={currentListing?.brand ?? ''} />
 
 		<div class="form-grid-2">
 			<label class="form-group"
@@ -417,8 +434,13 @@
 		</div>
 		{#if formProductUrl && !formProductId}
 			<label
-				><input type="checkbox" name="variantConfirmed" value="yes" required /> The listing matches this
-				product and variant.</label
+				><input
+					type="checkbox"
+					name="variantConfirmed"
+					value="yes"
+					bind:checked={variantConfirmed}
+					required
+				/> The listing matches this product and variant.</label
 			>
 		{/if}
 
@@ -501,7 +523,7 @@
 			<button type="button" class="btn btn-secondary" onclick={() => (showCreateModal = false)}>
 				Cancel
 			</button>
-			<button type="submit" class="btn btn-primary"> Save Goal </button>
+			<button type="submit" class="btn btn-primary" disabled={isExtracting}> Save Goal </button>
 		</div>
 	</form>
 </Modal>

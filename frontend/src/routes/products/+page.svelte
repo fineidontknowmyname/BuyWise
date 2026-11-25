@@ -4,6 +4,8 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { formatRupees } from '#lib/money.js';
 	import Modal from '#lib/components/Modal.svelte';
+	import ProductListingPreview from '#lib/components/ProductListingPreview.svelte';
+	import { fillListingField, listingPrice, type ProductListing } from '#lib/productListing.js';
 	import type { ProductStats } from '#lib/server/api.js';
 	import {
 		Plus,
@@ -31,6 +33,15 @@
 	let extractUrl = $state('');
 	let isExtracting = $state(false);
 	let extractError = $state('');
+	let extractedData = $state<ProductListing | null>(null);
+	let formVariant = $state('');
+	let variantConfirmed = $state(false);
+	$effect(() => {
+		void formUrl;
+		void formVariant;
+		void formName;
+		variantConfirmed = false;
+	});
 
 	// Form fields
 	let formName = $state('');
@@ -45,6 +56,9 @@
 	let formNotes = $state('');
 
 	async function handleExtract() {
+		if (isExtracting) return;
+		const raw = extractUrl.trim();
+		const previous = extractedData;
 		if (!extractUrl.trim()) {
 			extractError = 'Please paste a valid product URL.';
 			return;
@@ -65,6 +79,22 @@
 			}
 
 			const data = await res.json();
+			if (extractUrl.trim() !== raw || !isAddModalOpen) return;
+			formName = fillListingField(formName, previous?.name, data.name);
+			formBrand = fillListingField(formBrand, previous?.brand, data.brand);
+			formCategory = fillListingField(
+				formCategory,
+				previous?.category ?? 'Electronics',
+				data.category
+			);
+			formVariant = fillListingField(formVariant, previous?.variant, data.variant);
+			formCurrentPrice = fillListingField(
+				formCurrentPrice,
+				listingPrice(previous),
+				listingPrice(data)
+			);
+			formImageUrl = data.imageUrl ?? '';
+			extractedData = data;
 			formRetailer = data.retailer;
 			formUrl = data.url;
 			activeTab = 'manual';
@@ -78,6 +108,9 @@
 	function resetForm() {
 		extractUrl = '';
 		extractError = '';
+		extractedData = null;
+		formVariant = '';
+		variantConfirmed = false;
 		formName = '';
 		formBrand = '';
 		formModel = '';
@@ -348,10 +381,10 @@
 				>
 					{#if isExtracting}
 						<span class="spinner"></span>
-						<span>Checking link...</span>
+						<span>Fetching details...</span>
 					{:else}
 						<Sparkles size={16} />
-						<span>Check retailer link</span>
+						<span>Fetch product details</span>
 					{/if}
 				</button>
 			</div>
@@ -363,6 +396,7 @@
 			{#if form?.error}<p role="alert">{form.error}</p>{/if}
 			<input type="hidden" name="url" value={formUrl} />
 			<input type="hidden" name="imageUrl" value={formImageUrl} />
+			{#if extractedData}<ProductListingPreview listing={extractedData} />{/if}
 
 			<div class="form-group">
 				<label for="name" class="form-label">Product Name *</label>
@@ -407,6 +441,7 @@
 					>Exact variant <input
 						class="form-input"
 						name="variant"
+						bind:value={formVariant}
 						maxlength="100"
 						placeholder="e.g. 256 GB, black"
 					/></label
@@ -417,8 +452,13 @@
 			</div>
 			<label class="form-group"
 				><span
-					><input type="checkbox" name="variantConfirmed" value="yes" /> If adding a listing, I confirmed
-					it matches this variant.</span
+					><input
+						type="checkbox"
+						name="variantConfirmed"
+						value="yes"
+						bind:checked={variantConfirmed}
+						required={!!formUrl}
+					/> If adding a listing, I confirmed it matches this variant.</span
 				></label
 			>
 

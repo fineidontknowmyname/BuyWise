@@ -61,6 +61,7 @@ export const actions: Actions = {
 			method: 'POST',
 			body: JSON.stringify({
 				name: field('name'),
+				imageUrl: field('imageUrl'),
 				brand: field('brand'),
 				model: field('model'),
 				variant,

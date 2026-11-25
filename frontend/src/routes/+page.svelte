@@ -4,6 +4,8 @@
 	import FinancialChart from '#lib/components/FinancialChart.svelte';
 	import ActivityList from '#lib/components/ActivityList.svelte';
 	import Modal from '#lib/components/Modal.svelte';
+	import ProductListingPreview from '#lib/components/ProductListingPreview.svelte';
+	import { fillListingField, listingPrice, type ProductListing } from '#lib/productListing.js';
 	import QuickExpenseModal from '#lib/components/QuickExpenseModal.svelte';
 	import type { PageProps } from './$types';
 	import {
@@ -88,6 +90,18 @@
 	let newGoalUrl = $state('');
 	let isAnalyzingUrl = $state(false);
 	let extractUrlError = $state('');
+	let goalListing = $state<ProductListing | null>(null);
+	let goalProductName = $state('');
+	let goalVariant = $state('');
+	let goalTarget = $state('');
+	let variantConfirmed = $state(false);
+	const currentListing = $derived(goalListing?.url === newGoalUrl ? goalListing : null);
+	$effect(() => {
+		void newGoalUrl;
+		void goalVariant;
+		void goalProductName;
+		variantConfirmed = false;
+	});
 	$effect(() => {
 		if (form?.error) {
 			showGoalModal = true;
@@ -96,7 +110,9 @@
 	});
 
 	async function analyzeGoalUrl() {
-		if (!newGoalUrl.trim()) return;
+		if (!newGoalUrl.trim() || isAnalyzingUrl) return;
+		const raw = newGoalUrl.trim();
+		const previous = goalListing;
 		isAnalyzingUrl = true;
 		extractUrlError = '';
 		try {
@@ -106,8 +122,14 @@
 				body: JSON.stringify({ url: newGoalUrl.trim() })
 			});
 			const d = await res.json();
+			if (newGoalUrl.trim() !== raw || !showGoalModal) return;
 			if (res.ok) {
-				if (d.name && !newGoalName) newGoalName = `Buy ${d.name}`;
+				goalListing = d;
+				goalProductName = fillListingField(goalProductName, previous?.name, d.name);
+				goalVariant = fillListingField(goalVariant, previous?.variant, d.variant);
+				newGoalUrl = d.url;
+				if (d.name && !newGoalName) newGoalName = `Buy ${d.name}`.slice(0, 200);
+				if (String(goalTarget ?? '').trim() === '') goalTarget = listingPrice(d);
 			} else {
 				extractUrlError = d.error || 'Failed to analyze URL.';
 			}
@@ -385,6 +407,7 @@
 			<div class="url-input-row">
 				<input
 					id="create-goal-url"
+					name="productUrl"
 					type="url"
 					placeholder="https://www.amazon.in/dp/... or store URL"
 					class="input"
@@ -401,7 +424,7 @@
 						<span>Analyzing...</span>
 					{:else}
 						<Sparkles size={14} />
-						<span>Analyze</span>
+						<span>Fetch details</span>
 					{/if}
 				</button>
 			</div>
@@ -409,6 +432,48 @@
 				<span class="text-xs text-danger mt-1">{extractUrlError}</span>
 			{/if}
 		</div>
+
+		{#if currentListing}<ProductListingPreview listing={currentListing} />{/if}
+		<input type="hidden" name="imageUrl" value={currentListing?.imageUrl ?? ''} />
+		<input type="hidden" name="brand" value={currentListing?.brand ?? ''} />
+		{#if newGoalUrl}
+			<label class="form-group"
+				>Product name<input
+					class="input"
+					name="productName"
+					maxlength="200"
+					bind:value={goalProductName}
+				/></label
+			>
+			<label class="form-group"
+				>Exact variant<input
+					class="input"
+					name="variant"
+					maxlength="100"
+					bind:value={goalVariant}
+					required
+				/></label
+			>
+			<label
+				><input
+					type="checkbox"
+					name="variantConfirmed"
+					value="yes"
+					bind:checked={variantConfirmed}
+					required
+				/> The listing matches this product and variant.</label
+			>
+		{/if}
+		<label class="form-group"
+			>Target price (INR)<input
+				class="input"
+				type="number"
+				step="0.01"
+				min="0"
+				name="targetPrice"
+				bind:value={goalTarget}
+			/></label
+		>
 
 		{#if form?.error}
 			<p class="form-error" role="alert">{form.error}</p>
@@ -418,7 +483,7 @@
 			<button type="button" class="btn btn-secondary" onclick={() => (showGoalModal = false)}>
 				Cancel
 			</button>
-			<button type="submit" class="btn btn-primary"> Save Goal </button>
+			<button type="submit" class="btn btn-primary" disabled={isAnalyzingUrl}> Save Goal </button>
 		</div>
 	</form>
 </Modal>

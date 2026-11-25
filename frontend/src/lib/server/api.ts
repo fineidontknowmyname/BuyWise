@@ -216,7 +216,7 @@ export async function apiRequest<T>(
 		response = await fetchFn(`${baseUrl}${path}`, {
 			...init,
 			headers: { 'Content-Type': 'application/json', ...init?.headers },
-			signal: AbortSignal.timeout(5000)
+			signal: init?.signal ?? AbortSignal.timeout(5000)
 		});
 	} catch {
 		return { ok: false, status: 503, error: unreachable };

@@ -28,6 +28,7 @@ type productOffers struct {
 
 func (h offerHandler) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /products/validate-listing", h.validateURL)
+	mux.HandleFunc("POST /products/extract", h.extractListing)
 	mux.HandleFunc("POST /products/tracked", h.createTracked)
 	mux.HandleFunc("GET /products/{id}/offers", h.product(h.list))
 	mux.HandleFunc("POST /products/{id}/offers", h.product(h.create))
@@ -46,6 +47,7 @@ func (h offerHandler) createTracked(w http.ResponseWriter, r *http.Request) {
 		Variant      string              `json:"variant"`
 		Category     string              `json:"category"`
 		Notes        string              `json:"notes"`
+		ImageURL     string              `json:"imageUrl"`
 		Offer        *offerInput         `json:"offer"`
 		MaximumPaise *int64              `json:"maximumPaise"`
 		OpeningPrice *ObservedOfferPrice `json:"openingPrice"`
@@ -78,10 +80,16 @@ func (h offerHandler) createTracked(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, errInvalidOffer)
 		return
 	}
-	product, err := NewService(h.store, h.now).CreateProduct(r.Context(), Product{
+	productInput := Product{
 		Name: input.Name, Brand: strings.TrimSpace(input.Brand), Model: strings.TrimSpace(input.Model),
 		Variant: input.Variant, Category: input.Category, Notes: input.Notes, Availability: "unknown",
-	})
+		ImageURL: safeProductImage(input.ImageURL),
+	}
+	if input.Offer != nil {
+		productInput.URL = input.Offer.ListingURL
+		productInput.Retailer = input.Offer.Retailer
+	}
+	product, err := NewService(h.store, h.now).CreateProduct(r.Context(), productInput)
 	if err != nil {
 		h.fail(w, err)
 		return
