@@ -7,7 +7,9 @@ import (
 	"selfemi/internal/platform/httpjson"
 )
 
-func reservedCaptureKey(key string) bool { return strings.HasPrefix(key, captureKeyPrefix) }
+func reservedCaptureKey(key string) bool {
+	return strings.HasPrefix(key, captureKeyPrefix) || strings.HasPrefix(key, "expense-import-")
+}
 
 func (h *Handler) recordExpense(w http.ResponseWriter, r *http.Request) {
 	var fields expenseFields

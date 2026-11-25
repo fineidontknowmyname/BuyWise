@@ -40,6 +40,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	if store, ok := h.service.repo.(*Store); ok {
 		foundationHandler{store: store, logger: h.logger, today: h.service.Today}.register(mux)
 		h.registerCapture(mux, store)
+		h.registerExpenseWorkspace(mux, store)
 	}
 }
 
