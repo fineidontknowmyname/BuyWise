@@ -172,7 +172,9 @@ func (s *Store) UpdateProduct(ctx context.Context, p Product) error {
 	}
 	db := database.Scoped(ctx, s.pool)
 	var identityChanged bool
-	err := db.QueryRow(ctx, `SELECT (brand, model, variant) IS DISTINCT FROM ($2::text, $3::text, $4::text)
+	err := db.QueryRow(ctx, `SELECT ((brand <> '' AND brand IS DISTINCT FROM $2::text)
+        OR (model <> '' AND model IS DISTINCT FROM $3::text)
+        OR variant IS DISTINCT FROM $4::text)
         AND EXISTS (SELECT FROM pricing.retailer_offers WHERE product_id = $1::uuid)
         FROM pricing.products WHERE id = $1::uuid`, p.ID.String(), p.Brand, p.Model, p.Variant).Scan(&identityChanged)
 	if err != nil {

@@ -222,6 +222,16 @@ export const actions: Actions = {
 		const goalId = params.id;
 		const form = await request.formData();
 		const productId = String(form.get('productId') ?? '');
+		const base = apiUrl();
+		const goalResult = await apiRequest<Goal>(fetch, base, `/goals/${goalId}`);
+		if (!goalResult.ok) return fail(goalResult.status, { error: goalResult.error.message });
+		if (productId !== (goalResult.data.productId || ''))
+			return fail(409, { error: 'The linked product changed. Reload this goal before saving.' });
+		const existingProduct = productId
+			? await apiRequest<Product>(fetch, base, `/products/${productId}`)
+			: null;
+		if (existingProduct && !existingProduct.ok)
+			return fail(existingProduct.status, { error: existingProduct.error.message });
 		const name = String(form.get('name') ?? '').trim();
 		const brand = String(form.get('brand') ?? '').trim();
 		const model = String(form.get('model') ?? '').trim();
@@ -230,37 +240,36 @@ export const actions: Actions = {
 		const url = String(form.get('url') ?? '').trim();
 		const imageUrl = String(form.get('imageUrl') ?? '').trim();
 		const notes = String(form.get('notes') ?? '').trim();
-		const availability = String(form.get('availability') ?? 'in_stock');
+		const availability = String(form.get('availability') ?? 'unknown');
 		const currency = String(form.get('currency') ?? 'INR');
 		const specsRaw = String(form.get('specifications') ?? '{}');
 
-		const currentPriceRupees = parseFloat(String(form.get('currentPrice') ?? '0'));
-		const originalPriceRupees = parseFloat(String(form.get('originalPrice') ?? '0'));
-		const targetPriceRupees = parseFloat(String(form.get('targetPrice') ?? '0'));
-
-		const currentPricePaise =
-			isNaN(currentPriceRupees) || currentPriceRupees < 0
-				? 0
-				: Math.round(currentPriceRupees * 100);
-		const originalPricePaise =
-			isNaN(originalPriceRupees) || originalPriceRupees < 0
-				? 0
-				: Math.round(originalPriceRupees * 100);
-		const targetPricePaise =
-			isNaN(targetPriceRupees) || targetPriceRupees < 0 ? 0 : Math.round(targetPriceRupees * 100);
+		const currentPricePaise = parseRupees(String(form.get('currentPrice') || '0'));
+		const originalPricePaise = parseRupees(String(form.get('originalPrice') || '0'));
+		if (currentPricePaise === null || originalPricePaise === null)
+			return fail(400, { error: 'Enter prices with up to two decimal places.' });
+		const targetPricePaise = existingProduct?.ok
+			? existingProduct.data.targetPricePaise
+			: goalResult.data.targetPricePaise;
 
 		let specifications: Record<string, string>;
 		try {
 			specifications = JSON.parse(specsRaw);
+			if (
+				!specifications ||
+				typeof specifications !== 'object' ||
+				Array.isArray(specifications) ||
+				Object.values(specifications).some((value) => typeof value !== 'string')
+			)
+				return fail(400, { error: 'Specifications must contain named text values.' });
 		} catch {
-			specifications = {};
+			return fail(400, { error: 'Specifications must be valid JSON.' });
 		}
 
 		if (!name) {
 			return fail(400, { error: 'Product name is required.' });
 		}
 
-		const base = apiUrl();
 		let targetProdId = productId;
 
 		if (!targetProdId) {
@@ -293,28 +302,35 @@ export const actions: Actions = {
 			targetProdId = createRes.data.id;
 
 			// Link to goal
-			const goalRes = await apiRequest<Goal>(fetch, base, `/goals/${goalId}`);
-			if (goalRes.ok) {
-				await apiRequest(fetch, base, `/goals/${goalId}`, {
-					method: 'PUT',
-					body: JSON.stringify({
-						...goalRes.data,
-						productId: targetProdId,
-						targetPricePaise: targetPricePaise || currentPricePaise || goalRes.data.targetPricePaise
-					})
-				});
-			}
+			const linked = await apiRequest(fetch, base, `/goals/${goalId}`, {
+				method: 'PUT',
+				body: JSON.stringify({
+					name: goalResult.data.name,
+					targetDate: goalResult.data.targetDate,
+					priority: goalResult.data.priority,
+					status: goalResult.data.status,
+					productId: targetProdId,
+					targetPricePaise
+				})
+			});
+			if (!linked.ok) return fail(linked.status, { error: linked.error.message });
 		} else {
 			// Update existing product
 			const updateRes = await apiRequest<Product>(fetch, base, `/products/${targetProdId}`, {
 				method: 'PUT',
 				body: JSON.stringify({
-					id: targetProdId,
+					description: existingProduct?.ok ? existingProduct.data.description : '',
+					lastRetrievedAt: existingProduct?.ok ? existingProduct.data.lastRetrievedAt : null,
+					warnings: existingProduct?.ok ? existingProduct.data.warnings : [],
+					discountPercent:
+						originalPricePaise > currentPricePaise && originalPricePaise > 0
+							? ((originalPricePaise - currentPricePaise) / originalPricePaise) * 100
+							: 0,
 					name,
 					brand,
 					model,
 					variant,
-					category: 'Shopping',
+					category: existingProduct?.ok ? existingProduct.data.category : 'Shopping',
 					currentPricePaise,
 					originalPricePaise,
 					targetPricePaise,
@@ -396,7 +412,10 @@ export const actions: Actions = {
 		const base = apiUrl();
 		const goalRes = await apiRequest<Goal>(fetch, base, `/goals/${goalId}`);
 		if (!goalRes.ok) return fail(goalRes.status, { error: goalRes.error.message });
-		const goalName = goalRes.data.name;
+		const linkedProduct = goalRes.data.productId
+			? await apiRequest<Product>(fetch, base, `/products/${goalRes.data.productId}`)
+			: null;
+		const goalName = linkedProduct?.ok ? linkedProduct.data.name : goalRes.data.name;
 
 		const arrayBuffer = await file.arrayBuffer();
 		const buffer = Buffer.from(arrayBuffer);
@@ -411,11 +430,11 @@ export const actions: Actions = {
 				fetch
 			);
 
-			if (preview.validRows.length === 0) {
+			if (preview.validRows.length === 0 && !preview.productDetails) {
 				const errMsg =
 					preview.errorRows.length > 0
 						? `No valid price observations found (${preview.errorRows.length} rows failed date or price validation).`
-						: 'No price observation records could be found in this document.';
+						: 'No product details or dated price records were found. Use a document with labelled product fields or a price-history table.';
 				return fail(400, { error: errMsg, preview });
 			}
 
@@ -429,6 +448,7 @@ export const actions: Actions = {
 					purpose: preview.purpose,
 					status: 'previewed',
 					parsedData: {
+						productDetails: preview.productDetails,
 						validRows: preview.validRows,
 						errorRows: preview.errorRows,
 						detectedColumns: preview.detectedColumns,

@@ -24,6 +24,10 @@ export interface DocumentProductDetails {
 	currency?: string;
 	specifications?: Record<string, string>;
 	retailer?: string;
+	url?: string;
+	imageUrl?: string;
+	availability?: 'in_stock' | 'out_of_stock' | 'pre_order' | 'unknown';
+	notes?: string;
 }
 
 export interface ProductIdentityMatch {
@@ -50,6 +54,7 @@ export interface DocumentPreviewResult {
 		notesColumn?: string;
 	};
 	productDetails?: DocumentProductDetails;
+	warnings?: string[];
 	identityMatch?: ProductIdentityMatch;
 	validRows: ParsedPriceRow[];
 	errorRows: Array<{ line: number; raw: string; error: string }>;

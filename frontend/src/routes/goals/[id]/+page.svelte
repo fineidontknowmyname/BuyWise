@@ -6,8 +6,17 @@
 	import Modal from '#lib/components/Modal.svelte';
 	import PriceTimelineChart from '#lib/components/PriceTimelineChart.svelte';
 	import { formatRupees } from '#lib/money.js';
+	import { parseRupees } from '#lib/money.js';
+	import {
+		applyDocumentDetails,
+		documentProductLabels,
+		documentIdentityConflicts
+	} from '#lib/documentProduct.js';
 	import type { PageProps } from './$types';
-	import type { DocumentPreviewResult } from '#lib/server/documents/types.js';
+	import type {
+		DocumentPreviewResult,
+		DocumentProductDetails
+	} from '#lib/server/documents/types.js';
 	import {
 		ArrowLeft,
 		CheckCircle2,
@@ -100,14 +109,16 @@
 	let editRetailer = $state('');
 	let editUrl = $state('');
 	let editImageUrl = $state('');
-	let editAvailability = $state('in_stock');
+	let editAvailability = $state('unknown');
 	let editCurrency = $state('INR');
 	let editCurrentPrice = $state('');
 	let editOriginalPrice = $state('');
 	let editNotes = $state('');
 	let editSpecsJson = $state('{}');
+	let documentSource = $state('');
 
 	function openEditProductModal() {
+		documentSource = '';
 		if (data.product) {
 			editName = data.product.name;
 			editBrand = data.product.brand || '';
@@ -116,7 +127,7 @@
 			editRetailer = data.product.retailer || '';
 			editUrl = data.product.url || '';
 			editImageUrl = data.product.imageUrl || '';
-			editAvailability = data.product.availability || 'in_stock';
+			editAvailability = data.product.availability || 'unknown';
 			editCurrency = data.product.currency || 'INR';
 			editCurrentPrice =
 				data.product.currentPricePaise > 0 ? (data.product.currentPricePaise / 100).toString() : '';
@@ -136,11 +147,9 @@
 			editRetailer = '';
 			editUrl = '';
 			editImageUrl = '';
-			editAvailability = 'in_stock';
+			editAvailability = 'unknown';
 			editCurrency = 'INR';
-			editCurrentPrice = data.goal?.targetPricePaise
-				? (data.goal.targetPricePaise / 100).toString()
-				: '';
+			editCurrentPrice = '';
 			editOriginalPrice = '';
 			editNotes = '';
 			editSpecsJson = '{}';
@@ -162,6 +171,100 @@
 	let docPreview = $state<DocumentPreviewResult | null>(null);
 	let isConfirmingImport = $state(false);
 	let importCompleted = $state(false);
+	let documentFromEditor = $state(false);
+	let selectedDocumentFields = $state<Array<keyof DocumentProductDetails>>([]);
+	let documentIdentityConfirmed = $state(false);
+	const documentFields = $derived(
+		Object.entries(docPreview?.productDetails ?? {})
+			.filter(([, value]) => value !== undefined)
+			.map(([key, value]) => ({
+				key: key as keyof DocumentProductDetails,
+				label: documentProductLabels[key as keyof DocumentProductDetails],
+				value: key.endsWith('Paise')
+					? formatRupees(value as number)
+					: typeof value === 'object'
+						? Object.entries(value)
+								.map(([name, detail]) => `${name}: ${detail}`)
+								.join('; ')
+						: String(value)
+			}))
+	);
+	const documentConflicts = $derived(
+		documentIdentityConflicts(
+			{ variant: data.product?.variant, model: data.product?.model, url: data.product?.url },
+			docPreview?.productDetails ?? {}
+		)
+	);
+	const documentMismatch = $derived(
+		Boolean(docPreview?.identityMatch && !docPreview.identityMatch.matches) ||
+			documentConflicts.length > 0
+	);
+
+	function startDocumentImport(fromEditor = false) {
+		documentFromEditor = fromEditor;
+		showEditProductModal = false;
+		docPreview = null;
+		docUploadError = '';
+		importCompleted = false;
+		documentIdentityConfirmed = false;
+		showDocUploadModal = true;
+	}
+	function closeDocumentImport() {
+		showDocUploadModal = false;
+		if (documentFromEditor) showEditProductModal = true;
+	}
+
+	function fillProductFromDocument() {
+		if (!docPreview?.productDetails || (documentMismatch && !documentIdentityConfirmed)) return;
+		if (!documentFromEditor) openEditProductModal();
+		let specifications: Record<string, string>;
+		try {
+			const parsed = JSON.parse(editSpecsJson);
+			specifications =
+				parsed &&
+				typeof parsed === 'object' &&
+				!Array.isArray(parsed) &&
+				Object.values(parsed).every((value) => typeof value === 'string')
+					? parsed
+					: {};
+		} catch {
+			specifications = {};
+		}
+		const current: DocumentProductDetails = {
+			name: editName,
+			brand: editBrand,
+			model: editModel,
+			variant: editVariant,
+			retailer: editRetailer,
+			url: editUrl,
+			imageUrl: editImageUrl,
+			currency: editCurrency,
+			notes: editNotes,
+			specifications,
+			availability: editAvailability as DocumentProductDetails['availability'],
+			currentPricePaise: parseRupees(editCurrentPrice) ?? undefined,
+			originalPricePaise: parseRupees(editOriginalPrice) ?? undefined
+		};
+		const filled = applyDocumentDetails(current, docPreview.productDetails, selectedDocumentFields);
+		editName = filled.name ?? '';
+		editBrand = filled.brand ?? '';
+		editModel = filled.model ?? '';
+		editVariant = filled.variant ?? '';
+		editRetailer = filled.retailer ?? '';
+		editUrl = filled.url ?? '';
+		editImageUrl = filled.imageUrl ?? '';
+		editCurrency = filled.currency ?? 'INR';
+		editAvailability = filled.availability ?? 'unknown';
+		editNotes = filled.notes ?? '';
+		editCurrentPrice =
+			filled.currentPricePaise !== undefined ? (filled.currentPricePaise / 100).toString() : '';
+		editOriginalPrice =
+			filled.originalPricePaise !== undefined ? (filled.originalPricePaise / 100).toString() : '';
+		editSpecsJson = JSON.stringify(filled.specifications ?? {}, null, 2);
+		documentSource = docPreview.filename;
+		showDocUploadModal = false;
+		showEditProductModal = true;
+	}
 
 	async function handleDocUpload() {
 		if (!docFile) return;
@@ -183,6 +286,10 @@
 			);
 			if (result.type === 'success' && result.data?.preview) {
 				docPreview = result.data.preview;
+				selectedDocumentFields = Object.keys(docPreview.productDetails ?? {}) as Array<
+					keyof DocumentProductDetails
+				>;
+				documentIdentityConfirmed = false;
 			} else {
 				docUploadError =
 					result.type === 'failure'
@@ -431,12 +538,7 @@
 					<button
 						type="button"
 						class="btn btn-secondary btn-sm"
-						onclick={() => {
-							docPreview = null;
-							docFile = null;
-							docUploadError = '';
-							showDocUploadModal = true;
-						}}
+						onclick={() => startDocumentImport()}
 					>
 						<UploadCloud size={14} />
 						<span>Upload Document</span>
@@ -709,7 +811,7 @@
 								<button
 									type="button"
 									class="btn btn-secondary btn-sm mt-2"
-									onclick={() => (showDocUploadModal = true)}
+									onclick={() => startDocumentImport()}
 								>
 									Upload Product Document
 								</button>
@@ -776,7 +878,7 @@
 					<button
 						type="button"
 						class="btn btn-secondary btn-sm"
-						onclick={() => (showDocUploadModal = true)}
+						onclick={() => startDocumentImport()}
 					>
 						<UploadCloud size={14} />
 						<span>Upload File</span>
@@ -845,6 +947,12 @@
 >
 	<form method="POST" action="?/updateProductDetails" class="modal-form">
 		<input type="hidden" name="productId" value={data.product?.id || ''} />
+		<button type="button" class="btn btn-secondary" onclick={() => startDocumentImport(true)}
+			><UploadCloud size={16} /> Fill from document</button
+		>
+		{#if documentSource}<p class="text-sm text-muted" role="status">
+				Filled from {documentSource}. Review and save below. Document prices are not a live quote.
+			</p>{/if}
 
 		<div class="form-group">
 			<label for="edit-prod-name" class="label">Product Name *</label>
@@ -918,6 +1026,7 @@
 					bind:value={editAvailability}
 				>
 					<option value="in_stock">In Stock</option>
+					<option value="unknown">Unconfirmed</option>
 					<option value="out_of_stock">Out of Stock</option>
 					<option value="pre_order">Pre-Order</option>
 				</select>
@@ -1084,11 +1193,7 @@
 <!-- =========================================================================
      MODAL 4: Multi-Format Document Ingestion (Section 6)
      ========================================================================= -->
-<Modal
-	isOpen={showDocUploadModal}
-	title="Import Product Document"
-	onclose={() => (showDocUploadModal = false)}
->
+<Modal isOpen={showDocUploadModal} title="Import Product Document" onclose={closeDocumentImport}>
 	<div class="document-upload-workflow">
 		{#if docUploadError}
 			<div class="alert alert-danger mt-3" role="alert">{docUploadError}</div>
@@ -1152,54 +1257,96 @@
 						<div>{docPreview.identityMatch.warning}</div>
 					</div>
 				{/if}
+				{#if documentMismatch}
+					{#if documentConflicts.length}<p class="text-sm">
+							Different saved values: {documentConflicts.join(', ')}.
+						</p>{/if}
+					<label class="document-confirm"
+						><input type="checkbox" bind:checked={documentIdentityConfirmed} /> The document differs from
+						the saved product or variant. I have checked that it is the product I want to use.</label
+					>
+				{/if}
+				{#each docPreview.warnings ?? [] as warning (warning)}<p class="text-sm text-muted">
+						{warning}
+					</p>{/each}
+				{#if documentFields.length}
+					<section class="document-fields" aria-label="Detected product details">
+						<h3>Product details</h3>
+						<p class="text-sm text-muted">
+							Choose fields to fill. Other values stay as they are. Review the form before saving.
+						</p>
+						{#each documentFields as field (field.key)}
+							<label class="document-field"
+								><input
+									type="checkbox"
+									bind:group={selectedDocumentFields}
+									value={field.key}
+								/><span><strong>{field.label}</strong><span>{field.value}</span></span></label
+							>
+						{/each}
+						<button
+							type="button"
+							class="btn btn-primary"
+							onclick={fillProductFromDocument}
+							disabled={!selectedDocumentFields.length ||
+								(documentMismatch && !documentIdentityConfirmed)}>Fill product form</button
+						>
+					</section>
+				{/if}
 
-				<div class="preview-metrics-row mb-3">
-					<div class="stat-pill">
-						<CheckCircle2 size={15} class="text-success" />
-						<span>{docPreview.validRows.length} Valid Records</span>
+				{#if docPreview.validRows.length || docPreview.errorRows.length}
+					<div class="preview-metrics-row mb-3">
+						<div class="stat-pill">
+							<CheckCircle2 size={15} class="text-success" />
+							<span>{docPreview.validRows.length} Valid Records</span>
+						</div>
+						{#if docPreview.duplicateCount > 0}
+							<div class="stat-pill">
+								<AlertTriangle size={15} class="text-warning" />
+								<span>{docPreview.duplicateCount} Duplicate Dates Filtered</span>
+							</div>
+						{/if}
+						{#if docPreview.errorRows.length > 0}
+							<div class="stat-pill">
+								<AlertCircle size={15} class="text-danger" />
+								<span>{docPreview.errorRows.length} Invalid Lines Skipped</span>
+							</div>
+						{/if}
 					</div>
-					{#if docPreview.duplicateCount > 0}
-						<div class="stat-pill">
-							<AlertTriangle size={15} class="text-warning" />
-							<span>{docPreview.duplicateCount} Duplicate Dates Filtered</span>
-						</div>
-					{/if}
-					{#if docPreview.errorRows.length > 0}
-						<div class="stat-pill">
-							<AlertCircle size={15} class="text-danger" />
-							<span>{docPreview.errorRows.length} Invalid Lines Skipped</span>
-						</div>
-					{/if}
-				</div>
+				{/if}
 
 				<!-- Preview Table of First 5 Observations -->
-				<div class="preview-table-box mb-3">
-					<table class="table text-xs">
-						<thead>
-							<tr>
-								<th>Date (YYYY-MM-DD)</th>
-								<th>Price</th>
-								<th>Type</th>
-								<th>Retailer</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each docPreview.validRows.slice(0, 5) as row, idx (idx)}
+				{#if docPreview.validRows.length}
+					<div class="preview-table-box mb-3">
+						<table class="table text-xs">
+							<thead>
 								<tr>
-									<td class="font-mono">{row.observedOn}</td>
-									<td class="font-mono tabular-nums text-accent">{formatRupees(row.pricePaise)}</td>
-									<td><span class="badge badge-secondary text-xs">{row.priceType}</span></td>
-									<td>{row.retailer || 'Document'}</td>
+									<th>Date (YYYY-MM-DD)</th>
+									<th>Price</th>
+									<th>Type</th>
+									<th>Retailer</th>
 								</tr>
-							{/each}
-						</tbody>
-					</table>
-					{#if docPreview.validRows.length > 5}
-						<div class="text-xs text-muted text-center py-1">
-							+ {docPreview.validRows.length - 5} more observations in this document
-						</div>
-					{/if}
-				</div>
+							</thead>
+							<tbody>
+								{#each docPreview.validRows.slice(0, 5) as row, idx (idx)}
+									<tr>
+										<td class="font-mono">{row.observedOn}</td>
+										<td class="font-mono tabular-nums text-accent"
+											>{formatRupees(row.pricePaise)}</td
+										>
+										<td><span class="badge badge-secondary text-xs">{row.priceType}</span></td>
+										<td>{row.retailer || 'Document'}</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+						{#if docPreview.validRows.length > 5}
+							<div class="text-xs text-muted text-center py-1">
+								+ {docPreview.validRows.length - 5} more observations in this document
+							</div>
+						{/if}
+					</div>
+				{/if}
 
 				{#if importCompleted}
 					<div class="alert alert-success">
@@ -1217,19 +1364,21 @@
 					>
 						Back
 					</button>
-					<button
-						type="button"
-						class="btn btn-accent"
-						disabled={isConfirmingImport || importCompleted || docPreview.validRows.length === 0}
-						onclick={confirmDocImport}
-					>
-						{#if isConfirmingImport}
-							<Clock size={14} class="animate-spin" />
-							<span>Importing Records...</span>
-						{:else}
-							<span>Confirm & Import ({docPreview.validRows.length} records)</span>
-						{/if}
-					</button>
+					{#if docPreview.validRows.length}<button
+							type="button"
+							class="btn btn-accent"
+							disabled={isConfirmingImport ||
+								importCompleted ||
+								(documentMismatch && !documentIdentityConfirmed)}
+							onclick={confirmDocImport}
+						>
+							{#if isConfirmingImport}
+								<Clock size={14} class="animate-spin" />
+								<span>Importing Records...</span>
+							{:else}
+								<span>Confirm & Import ({docPreview.validRows.length} records)</span>
+							{/if}
+						</button>{/if}
 				</div>
 			</div>
 		{/if}
@@ -1629,6 +1778,37 @@
 	}
 	.document-upload-workflow {
 		min-width: 0;
+	}
+	.document-fields {
+		display: grid;
+		gap: 12px;
+		margin-block: 16px;
+	}
+	.document-field,
+	.document-confirm {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		font-size: 0.875rem;
+	}
+	.document-field input,
+	.document-confirm input {
+		width: 16px;
+		height: 16px;
+		flex: none;
+		margin-top: 3px;
+	}
+	.document-field > span {
+		min-width: 0;
+		display: grid;
+		gap: 4px;
+		overflow-wrap: anywhere;
+	}
+	.document-field span span {
+		color: var(--foreground-secondary);
+		max-height: 140px;
+		overflow: auto;
+		white-space: pre-wrap;
 	}
 
 	.preview-metrics-row {

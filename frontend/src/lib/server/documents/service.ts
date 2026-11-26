@@ -6,7 +6,12 @@ import {
 	parseImageWithVision,
 	parseScannedPdfWithOcr
 } from './parsers.js';
-import { detectColumnMappings, evaluateProductIdentity } from './aiMapper.js';
+import {
+	detectColumnMappings,
+	evaluateProductIdentity,
+	type ColumnMappingResult
+} from './aiMapper.js';
+import { extractProductDetails } from './productExtraction.js';
 import type { DocumentPreviewResult, ParsedPriceRow } from './types.js';
 import { formatRupees } from '#lib/money.js';
 
@@ -55,18 +60,27 @@ export async function processDocumentUpload(
 	}
 
 	// 2. Detect column mappings & purpose
-	const mappingResult = await detectColumnMappings(
-		rawDoc.headers,
-		rawDoc.rows,
-		rawDoc.rawText,
-		fetchFn
-	);
+	const extracted = await extractProductDetails(rawDoc.rawText, fetchFn);
+	let mappingResult: ColumnMappingResult = { purpose: 'specifications' };
+	if (rawDoc.headers.length) {
+		try {
+			mappingResult = await detectColumnMappings(
+				rawDoc.headers,
+				rawDoc.rows,
+				rawDoc.rawText,
+				fetchFn
+			);
+		} catch (err) {
+			if (!extracted.details) throw err;
+			extracted.warnings.push(
+				'Price columns could not be identified. Product details can still be reviewed.'
+			);
+		}
+	}
+	const productDetails = extracted.details;
 
 	// 3. Product identity matching
-	const identityMatch = evaluateProductIdentity(
-		goalProductName,
-		mappingResult.productDetails?.name
-	);
+	const identityMatch = evaluateProductIdentity(goalProductName, productDetails?.name);
 
 	// 4. Deterministic row validation & normalization
 	const validRows: ParsedPriceRow[] = [];
@@ -161,7 +175,11 @@ export async function processDocumentUpload(
 		filename,
 		fileType,
 		fileSize: fileBuffer.length,
-		purpose: mappingResult.purpose,
+		purpose: productDetails
+			? validRows.length
+				? 'mixed'
+				: 'specifications'
+			: mappingResult.purpose,
 		detectedColumns: rawDoc.headers,
 		columnMappings: {
 			dateColumn: dateCol,
@@ -170,7 +188,8 @@ export async function processDocumentUpload(
 			retailerColumn: retailerCol,
 			notesColumn: notesCol
 		},
-		productDetails: mappingResult.productDetails,
+		productDetails,
+		warnings: extracted.warnings,
 		identityMatch,
 		validRows,
 		errorRows,
