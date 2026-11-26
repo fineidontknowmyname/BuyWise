@@ -109,13 +109,14 @@ export function parseExcel(buffer: Buffer): RawExtractedDocument {
 export async function parsePDF(buffer: Buffer): Promise<PDFExtractionResult> {
 	let rawText: string;
 	try {
-		const pdfModule = (await import('pdf-parse')) as unknown as {
-			default?: (b: Buffer) => Promise<{ text: string }>;
-			(b: Buffer): Promise<{ text: string }>;
-		};
-		const pdfParse = pdfModule.default || pdfModule;
-		const data = await pdfParse(buffer);
-		rawText = (data.text || '').trim();
+		const { PDFParse } = await import('pdf-parse');
+		const parser = new PDFParse({ data: new Uint8Array(buffer) });
+		try {
+			const data = await parser.getText();
+			rawText = (data.text || '').trim();
+		} finally {
+			await parser.destroy();
+		}
 	} catch (e: unknown) {
 		throw new Error(
 			`Failed to parse PDF document: ${e instanceof Error ? e.message : 'Invalid PDF data'}`,

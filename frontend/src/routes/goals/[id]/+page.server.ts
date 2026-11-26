@@ -382,9 +382,9 @@ export const actions: Actions = {
 	uploadDocument: async ({ params, request, fetch }) => {
 		const goalId = params.id;
 		const form = await request.formData();
-		const file = form.get('docFile') as File | null;
+		const file = form.get('docFile');
 
-		if (!file || file.size === 0) {
+		if (!(file instanceof File) || file.size === 0) {
 			return fail(400, { error: 'Please select a document file to upload.' });
 		}
 
@@ -395,7 +395,8 @@ export const actions: Actions = {
 
 		const base = apiUrl();
 		const goalRes = await apiRequest<Goal>(fetch, base, `/goals/${goalId}`);
-		const goalName = goalRes.ok ? goalRes.data.name : 'Purchase Goal';
+		if (!goalRes.ok) return fail(goalRes.status, { error: goalRes.error.message });
+		const goalName = goalRes.data.name;
 
 		const arrayBuffer = await file.arrayBuffer();
 		const buffer = Buffer.from(arrayBuffer);
@@ -419,7 +420,7 @@ export const actions: Actions = {
 			}
 
 			// Record upload on Go backend
-			await apiRequest(fetch, base, `/goals/${goalId}/documents`, {
+			const saved = await apiRequest(fetch, base, `/goals/${goalId}/documents`, {
 				method: 'POST',
 				body: JSON.stringify({
 					filename: preview.filename,
@@ -436,6 +437,7 @@ export const actions: Actions = {
 					summary: preview.summary
 				})
 			});
+			if (!saved.ok) return fail(saved.status, { error: saved.error.message });
 
 			return {
 				success: true,
@@ -443,7 +445,7 @@ export const actions: Actions = {
 			};
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : 'Failed to parse document.';
-			return fail(500, { error: msg });
+			return fail(422, { error: msg });
 		}
 	},
 

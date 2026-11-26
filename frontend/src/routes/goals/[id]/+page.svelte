@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { enhance } from '$app/forms';
+	import { deserialize, enhance } from '$app/forms';
 	import PurchaseReadiness from '#lib/components/PurchaseReadiness.svelte';
 	import PurchaseLifecycle from '#lib/components/PurchaseLifecycle.svelte';
 	import Modal from '#lib/components/Modal.svelte';
@@ -175,13 +175,19 @@
 		try {
 			const res = await fetch('?/uploadDocument', {
 				method: 'POST',
+				headers: { Accept: 'application/json' },
 				body: formData
 			});
-			const result = await res.json();
+			const result = deserialize<{ preview: DocumentPreviewResult }, { error: string }>(
+				await res.text()
+			);
 			if (result.type === 'success' && result.data?.preview) {
 				docPreview = result.data.preview;
 			} else {
-				docUploadError = result.data?.error || 'Document upload and parsing failed.';
+				docUploadError =
+					result.type === 'failure'
+						? result.data?.error || 'Document upload failed.'
+						: 'Document upload failed. Please try again.';
 			}
 		} catch (err: unknown) {
 			docUploadError = err instanceof Error ? err.message : 'Upload failed.';
@@ -193,6 +199,7 @@
 	async function confirmDocImport() {
 		if (!docPreview || docPreview.validRows.length === 0) return;
 		isConfirmingImport = true;
+		docUploadError = '';
 
 		const formData = new FormData();
 		formData.append('productId', data.product?.id || '');
@@ -202,13 +209,20 @@
 		try {
 			const res = await fetch('?/confirmDocumentImport', {
 				method: 'POST',
+				headers: { Accept: 'application/json' },
 				body: formData
 			});
-			if (res.ok) {
+			const result = deserialize<Record<string, unknown>, { error: string }>(await res.text());
+			if (result.type === 'success') {
 				importCompleted = true;
 				setTimeout(() => {
 					window.location.reload();
 				}, 1200);
+			} else {
+				docUploadError =
+					result.type === 'failure'
+						? result.data?.error || 'Import failed.'
+						: 'Import failed. Please try again.';
 			}
 		} catch (err: unknown) {
 			docUploadError = err instanceof Error ? err.message : 'Confirmation failed.';
@@ -1076,6 +1090,9 @@
 	onclose={() => (showDocUploadModal = false)}
 >
 	<div class="document-upload-workflow">
+		{#if docUploadError}
+			<div class="alert alert-danger mt-3" role="alert">{docUploadError}</div>
+		{/if}
 		{#if !docPreview}
 			<!-- Stage 1: File Selection -->
 			<div class="drop-zone">
@@ -1106,10 +1123,6 @@
 					</div>
 				{/if}
 			</div>
-
-			{#if docUploadError}
-				<div class="alert alert-danger mt-3">{docUploadError}</div>
-			{/if}
 
 			<div class="modal-footer mt-4">
 				<button type="button" class="btn btn-secondary" onclick={() => (showDocUploadModal = false)}
@@ -1601,11 +1614,21 @@
 
 	.selected-file-badge {
 		display: inline-flex;
+		max-width: 100%;
+		min-width: 0;
 		align-items: center;
 		gap: 6px;
 		background: var(--surface);
 		padding: 4px 10px;
 		border-radius: var(--radius-sm);
+	}
+	.selected-file-badge span {
+		min-width: 0;
+		overflow-wrap: anywhere;
+		white-space: normal;
+	}
+	.document-upload-workflow {
+		min-width: 0;
 	}
 
 	.preview-metrics-row {

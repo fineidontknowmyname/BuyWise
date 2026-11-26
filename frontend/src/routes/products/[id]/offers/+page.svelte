@@ -328,6 +328,7 @@
 						>
 					</div>
 					<button class="btn btn-primary form-save">Save targets</button>
+					{#if form?.thresholdError}<p class="wb-notice" role="alert">{form.thresholdError}</p>{/if}
 				</form>
 				{#if latestPrice}<p class="wb-muted">
 						{latestPrice.landedPaise === null

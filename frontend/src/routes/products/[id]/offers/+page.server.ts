@@ -125,17 +125,31 @@ export const actions = {
 	},
 	thresholds: async ({ params, request, fetch }) => {
 		const form = await request.formData();
+		const values = {
+			idealPaise: amount(form, 'ideal'),
+			goodPaise: amount(form, 'good'),
+			maximumPaise: amount(form, 'maximum')
+		};
+		const entered = Object.values(values).filter((value) => value !== null);
+		if (entered.some((value) => value <= 0)) {
+			return fail(400, {
+				thresholdError:
+					'Enter positive prices with up to two decimal places, or leave a field blank.'
+			});
+		}
+		if (entered.some((value, index) => index > 0 && value < entered[index - 1])) {
+			return fail(400, {
+				thresholdError:
+					'Ideal must be no higher than Good, and Good no higher than Maximum. Blank targets are optional.'
+			});
+		}
 		const result = await apiRequest(fetch, apiUrl(), path(params.id) + '/thresholds', {
 			method: 'PUT',
-			body: JSON.stringify({
-				idealPaise: amount(form, 'ideal'),
-				goodPaise: amount(form, 'good'),
-				maximumPaise: amount(form, 'maximum')
-			})
+			body: JSON.stringify(values)
 		});
 		return result.ok
 			? { notice: 'Price thresholds saved.' }
-			: fail(result.status, { error: result.error.message });
+			: fail(result.status, { thresholdError: result.error.message });
 	},
 	record: async ({ params, request, fetch }) => {
 		const form = await request.formData();
