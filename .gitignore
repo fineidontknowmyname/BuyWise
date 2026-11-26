@@ -26,3 +26,4 @@ reverse-engineering/
 /backend/internal/modules/pricing/listing_details_test.go
 /frontend/src/lib/priceRefresh.spec.ts
 /backend/internal/app/connected_workspace_test.go
+/frontend/src/lib/reverseEmi.spec.ts

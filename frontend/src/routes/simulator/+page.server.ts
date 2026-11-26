@@ -1,40 +1,25 @@
-import {
-	apiRequest,
-	type Account,
-	type Goal,
-	type Product,
-	type BudgetReport
-} from '#lib/server/api.js';
+import { apiRequest, type Goal, type Product } from '#lib/server/api.js';
 import { apiUrl } from '#lib/server/config.js';
-import { currentMonth } from '#lib/dates.js';
+import { todayInIndia } from '#lib/dates.js';
+import { addSavingMonths } from '#lib/reverseEmi.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ fetch }) => {
-	const month = currentMonth();
-
-	const [accountsRes, budgetRes, goalsRes, productsRes] = await Promise.all([
-		apiRequest<Account[]>(fetch, apiUrl(), '/accounts'),
-		apiRequest<BudgetReport>(fetch, apiUrl(), `/budgets?month=${month}`),
+	const [goals, products] = await Promise.all([
 		apiRequest<Goal[]>(fetch, apiUrl(), '/goals'),
 		apiRequest<Product[]>(fetch, apiUrl(), '/products')
 	]);
-
-	const accounts = accountsRes.ok && Array.isArray(accountsRes.data) ? accountsRes.data : [];
-	const totalLiquidPaise = accounts.reduce(
-		(acc: number, a: Account) => acc + Math.max(0, a.balancePaise || 0),
-		0
-	);
-
-	const budgetReport = budgetRes.ok ? budgetRes.data : null;
-	const discretionarySurplusPaise = budgetReport
-		? budgetReport.unbudgetedDiscretionaryPaise
-		: 2500000; // fallback ₹25,000 if no budget set
-
+	const today = todayInIndia();
 	return {
-		accounts,
-		totalLiquidPaise,
-		discretionarySurplusPaise,
-		goals: goalsRes.ok && Array.isArray(goalsRes.data) ? goalsRes.data : [],
-		products: productsRes.ok && Array.isArray(productsRes.data) ? productsRes.data : []
+		today,
+		firstSavingDate: addSavingMonths(today, 1) ?? today,
+		goals: goals.ok
+			? goals.data.filter((goal) => goal.status === 'active' || goal.status === 'paused')
+			: [],
+		products: products.ok ? products.data : [],
+		error:
+			!goals.ok || !products.ok
+				? 'Some saved information is unavailable. You can still calculate a draft.'
+				: null
 	};
 };

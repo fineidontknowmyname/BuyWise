@@ -1,4 +1,5 @@
 <script lang="ts">
+	import '#lib/styles/workbench.css';
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -17,13 +18,6 @@
 		data.history?.refresh?.state === 'queued' || data.history?.refresh?.state === 'running'
 	);
 	const refreshJobID = $derived(data.history?.refresh?.id);
-	const refreshMessages: Record<string, string> = {
-		provider_rate_limited: 'The provider rate limit was reached.',
-		provider_quota_exhausted:
-			'The refresh budget has been reached. Saved prices are still available.',
-		provider_price_unconfirmed: 'The provider could not verify a current price for this listing.',
-		provider_credentials: 'Live price access is unavailable.'
-	};
 	$effect(() => {
 		pollStopped = false;
 		if (!refreshing || !refreshJobID) return;
@@ -75,514 +69,438 @@
 		}).format(new Date(value));
 </script>
 
-<svelte:head><title>{data.product.name} · Retailer offers | BuyWise</title></svelte:head>
-<a href={resolve('/products')}>Back to products</a>
-<h1>{data.product.name}</h1>
-<p>
-	{[data.product.brand, data.product.model, data.product.variant].filter(Boolean).join(' · ') ||
-		'Variant details not recorded'}
-</p>
-{#if form?.error}<p role="alert">{form.error}</p>{/if}
-{#if form?.notice}<p role="status">{form.notice}</p>{/if}
-
-<section class="product-summary" aria-label="Saved product and latest price">
-	{#if data.product.imageUrl}<img
-			class="product-image"
-			src={data.product.imageUrl}
-			alt={data.product.name}
-			referrerpolicy="no-referrer"
-			onerror={(event) => ((event.currentTarget as HTMLImageElement).hidden = true)}
-		/>{/if}
-	<div class="product-facts">
-		<h2>Product overview</h2>
-		<p>
-			{data.product.brand || 'Brand not recorded'}{data.product.model
-				? ` · ${data.product.model}`
-				: ''}
-		</p>
-		<p>Saved variant: {data.product.variant || 'Not recorded'}</p>
-		{#if data.product.description}<p>{data.product.description}</p>{/if}
-		{#each data.product.warnings ?? [] as warning, index (index)}<p>{warning}</p>{/each}
-		{#if Object.keys(data.product.specifications ?? {}).length}
-			<details>
-				<summary>Saved specifications</summary>
-				<dl>
-					{#each Object.entries(data.product.specifications ?? {}) as [key, value] (key)}<dt>
-							{key}
-						</dt>
-						<dd>{value}</dd>{/each}
-				</dl>
-			</details>
-		{/if}
-		{#if data.product.lastRetrievedAt}<p>
-				Product details observed: {stamp(data.product.lastRetrievedAt)}
-			</p>{/if}
+<svelte:head><title>{data.product.name} · Product | BuyWise</title></svelte:head>
+<div class="workbench">
+	<header class="wb-heading">
+		<div>
+			<a class="wb-muted" href={resolve('/products')}>← Products & prices</a>
+			<h1>{data.product.name}</h1>
+			<p class="wb-muted">
+				{[data.product.brand, data.product.model, data.product.variant]
+					.filter(Boolean)
+					.join(' · ') || 'Product details'}
+			</p>
+		</div>
 		{#if data.history?.offer.listingUrl}<a
+				class="btn btn-secondary"
 				href={data.history.offer.listingUrl}
 				target="_blank"
-				rel="external noopener noreferrer">Open {data.history.offer.retailer} listing</a
+				rel="external noopener noreferrer">Open retailer ↗</a
 			>{/if}
-		{#if latestPrice}
-			<p class="headline-price">{formatRupees(latestPrice.itemPaise)}</p>
-			<p>
-				Latest observed item price · {data.history?.offer.retailer} · {data.history?.freshness ===
-				'stale'
-					? 'Stale observation'
-					: 'Recent observation'}
-			</p>
-			<p>
-				{latestPrice.sourceLabel || latestPrice.source} · {latestPrice.observedAt
-					? stamp(latestPrice.observedAt)
-					: latestPrice.observedOn}
-			</p>
-			<p>
-				Checkout total: {latestPrice.landedPaise === null
-					? 'Not confirmed; delivery, tax or discounts are missing.'
-					: formatRupees(latestPrice.landedPaise)}
-			</p>
-		{:else}<p>
-				No price observation saved for this offer yet. Refresh the price or record one below.
-			</p>{/if}
-	</div>
-</section>
-
-{#if data.history}
-	<section class="refresh-panel" aria-label="Price retrieval status">
-		<div role="status" aria-live="polite">
-			<h2>{refreshStatus.title}</h2>
-			<p>{refreshStatus.detail}</p>
-			{#if data.history.refresh}<p>Attempts: {data.history.refresh.attempts}</p>{/if}
-			{#if data.history.refresh?.nextRefreshAt}<p>
-					Next automatic check: {stamp(data.history.refresh.nextRefreshAt)}
-				</p>{/if}
-			{#if pollStopped && refreshing}<p>
-					Still waiting. Automatic status checks have paused. Check again; if this persists, the
-					backend worker may need attention.
-				</p>{/if}
-		</div>
-		<div class="product-actions">
-			{#if data.history.refreshAvailable}<form method="POST" action="?/refresh" use:enhance>
-					<input type="hidden" name="offerId" value={data.history.offer.id} /><button
-						class="btn btn-primary"
-						disabled={refreshing}>{refreshing ? 'Refresh in progress' : 'Refresh price'}</button
-					>
-				</form>{:else}<p>Automatic price refresh is unavailable for this listing.</p>{/if}
-			<button type="button" class="btn btn-secondary" onclick={() => invalidateAll()}
-				>Check status</button
-			>
-		</div>
-		<details>
-			<summary>Retrieve missing product details</summary>
-			<p>
-				Update the name, fill a missing brand and retrieve the available image from this listing.
-				Your saved variant and price thresholds stay in place. This uses the shared product lookup
-				allowance.
-			</p>
-			<form
-				method="POST"
-				action="?/details"
-				use:enhance={() => {
-					detailsLoading = true;
-					return async ({ update }) => {
-						try {
-							await update({ reset: false });
-						} finally {
-							detailsLoading = false;
-						}
-					};
-				}}
-			>
-				<input type="hidden" name="offerId" value={data.history.offer.id} />
-				<label class="confirm"
-					><input type="checkbox" name="confirmed" value="yes" required /> I checked that this listing
-					matches my saved product and variant.</label
-				>
-				<button class="btn" disabled={detailsLoading}
-					>{detailsLoading ? 'Retrieving details...' : 'Update product details'}</button
-				>
-			</form>
-		</details>
-	</section>
-{/if}
-
-<section>
-	<h2>Retailer offers</h2>
-	<p>Choose a saved offer to view its price, or add another retailer below.</p>
-	{#if data.offers.length}
-		<form
-			method="GET"
-			action={resolve('/products/[id]/offers', { id: data.product.id })}
-			class="offers"
+	</header>
+	{#if form?.error}<p class="wb-notice" role="alert">{form.error}</p>{/if}{#if form?.notice}<p
+			class="wb-notice"
+			role="status"
 		>
-			{#each data.offers as offer (offer.id)}
-				<button
-					class="btn"
-					name="offer"
-					value={offer.id}
-					aria-pressed={data.history?.offer.id === offer.id}
-				>
-					{offer.retailer}{offer.seller ? ' · ' + offer.seller : ''}
-				</button>
-			{/each}
-		</form>
-	{:else}<p>No offers tracked for this variant.</p>{/if}
-	<form method="POST" action="?/offer" use:enhance>
-		<input type="hidden" name="variant" value={data.product.variant ?? ''} />
-		<label
-			>Retailer<input
-				name="retailer"
-				maxlength="100"
-				placeholder="Optional for a supported URL"
-			/></label
-		>
-		<label>Seller<input name="seller" maxlength="150" /></label>
-		<label
-			>Listing URL<input
-				name="url"
-				type="url"
-				maxlength="2000"
-				placeholder="Optional for manual offers"
-			/></label
-		>
-		<label class="confirm"
-			><input type="checkbox" name="confirmed" value="yes" required /> This offer matches the product
-			and variant shown above.</label
-		>
-		<button class="btn btn-primary">Add offer</button>
-	</form>
-</section>
-
-<section>
-	<h2>Price thresholds</h2>
-	<p>
-		These are your buying targets. Set the prices you consider ideal, good and the maximum you will
-		pay.
-	</p>
-	<form
-		method="POST"
-		action="?/thresholds"
-		use:enhance={() =>
-			async ({ update }) => {
-				await update({ reset: false });
-			}}
-	>
-		<label
-			>Ideal price (₹)<input
-				name="ideal"
-				inputmode="decimal"
-				value={amount(data.thresholds.idealPaise)}
-			/></label
-		>
-		<label
-			>Good price (₹)<input
-				name="good"
-				inputmode="decimal"
-				value={amount(data.thresholds.goodPaise)}
-			/></label
-		>
-		<label
-			>Maximum price (₹)<input
-				name="maximum"
-				inputmode="decimal"
-				value={amount(data.thresholds.maximumPaise)}
-			/></label
-		>
-		<button class="btn btn-primary">Save thresholds</button>
-	</form>
-</section>
-
-{#if data.goals.length}
-	<section>
-		<h2>Link to a purchase goal</h2>
-		<form method="POST" action="?/goal" use:enhance>
-			<label
-				>Goal<select name="goalId" required>
-					<option value="">Choose an unlinked goal</option>
-					{#each data.goals as goal (goal.id)}<option value={goal.id}>{goal.name}</option>{/each}
-				</select></label
-			>
-			<button class="btn btn-primary">Link product</button>
-		</form>
-	</section>
-{/if}
-
-{#if data.history}
-	{@const history = data.history}
-	{@const latest = history.observations[0]}
-	<section>
-		<h2>{history.offer.retailer} price history</h2>
-		{#if history.offer.listingUrl}<a
-				href={history.offer.listingUrl}
-				target="_blank"
-				rel="external noopener noreferrer">Open listing</a
-			>{/if}
-		{#if latest}
-			<p>
-				<strong>Last observed item price {formatRupees(latest.itemPaise)}</strong> · {history.freshness ===
-				'stale'
-					? 'Stale'
-					: 'Recent'}
-			</p>
-			<p>
-				{availability[latest.availability]} · {latest.observedAt
-					? stamp(latest.observedAt)
-					: latest.observedOn}
-				· {latest.sourceLabel || latest.source}
-			</p>
-			<p>
-				Checkout total: {latest.landedPaise === null
-					? 'Unknown price components'
-					: formatRupees(latest.landedPaise)}
-			</p>
-			<p>
-				Extra tax: {money(latest.taxPaise)} · Delivery: {money(latest.deliveryPaise)} · Discount: {money(
-					latest.discountPaise
-				)}
-			</p>
-			<dl>
-				<dt>Lowest item price</dt>
-				<dd>{money(history.stats.minimumPaise)}</dd>
-				<dt>Highest item price</dt>
-				<dd>{money(history.stats.maximumPaise)}</dd>
-				<dt>Average item price</dt>
-				<dd>{money(history.stats.averagePaise)}</dd>
-				<dt>Observations</dt>
-				<dd>{history.stats.count}</dd>
-			</dl>
-			<PriceTimelineChart {prices} />
-			<p>Showing the latest {history.observations.length} observations.</p>
-			<div class="table-wrap">
-				<table>
-					<thead
-						><tr
-							><th scope="col">Observed (IST)</th><th scope="col">Source</th><th scope="col"
-								>Item price</th
-							><th scope="col">Checkout total</th><th scope="col">Availability</th></tr
-						></thead
-					>
-					<tbody>
-						{#each history.observations as record (record.id)}
-							<tr
-								><td>{record.observedAt ? stamp(record.observedAt) : record.observedOn}</td>
-								<td
-									>{record.sourceLabel || record.source}<br />{record.fetchedAt
-										? 'Fetched ' + stamp(record.fetchedAt)
-										: 'Recorded ' + stamp(record.recordedAt)}</td
+			{form.notice}
+		</p>{/if}
+	<div class="wb-columns">
+		<div class="wb-stack">
+			<section class="wb-card product-overview" aria-label="Saved product and latest price">
+				{#if data.product.imageUrl}<img
+						class="product-image"
+						src={data.product.imageUrl}
+						alt={data.product.name}
+						referrerpolicy="no-referrer"
+						onerror={(e) => ((e.currentTarget as HTMLImageElement).hidden = true)}
+					/>{/if}
+				<div class="price-copy">
+					<p class="wb-eyebrow">Latest item price</p>
+					<p class="wb-amount">
+						{latestPrice ? formatRupees(latestPrice.itemPaise) : 'Not available'}
+					</p>
+					<p class="wb-muted">
+						{latestPrice
+							? (data.history?.offer.retailer ?? '') +
+								' · ' +
+								(latestPrice.observedAt ? stamp(latestPrice.observedAt) : latestPrice.observedOn)
+							: 'Check the retailer or add a price below.'}
+					</p>
+					{#if latestPrice}<span class="wb-badge"
+							>{data.history?.freshness === 'stale'
+								? 'Needs a fresh check'
+								: availability[latestPrice.availability]}</span
+						>{/if}
+				</div>
+			</section>
+			{#if data.history}
+				<div class="retrieval-strip" aria-label="Price retrieval status">
+					<div role="status" aria-live="polite">
+						<strong
+							>{refreshing
+								? 'Checking retailer…'
+								: data.history.refresh?.state === 'failed'
+									? 'Couldn’t update price'
+									: data.history.refresh?.state === 'succeeded'
+										? 'Price updated'
+										: 'Retailer price check'}</strong
+						>
+						<p class="wb-muted">
+							{refreshing
+								? 'We’ll update this price when the check finishes.'
+								: data.history.refresh?.state === 'failed'
+									? 'Your saved information is unchanged. Try again or add a price.'
+									: latestPrice
+										? 'Last saved price is shown above.'
+										: 'No retailer price saved yet.'}
+						</p>
+					</div>
+					<div class="wb-actions">
+						{#if data.history.refreshAvailable}<form method="POST" action="?/refresh" use:enhance>
+								<input type="hidden" name="offerId" value={data.history.offer.id} /><button
+									class="btn btn-secondary"
+									disabled={refreshing}>{refreshing ? 'Checking…' : 'Refresh price'}</button
 								>
-								<td>{formatRupees(record.itemPaise)}</td><td>{money(record.landedPaise)}</td><td
-									>{availability[record.availability]}</td
-								></tr
+							</form>{/if}{#if refreshing}<button
+								class="btn btn-ghost"
+								type="button"
+								onclick={() => invalidateAll()}>Check again</button
+							>{/if}
+					</div>
+					<details class="retrieval-help">
+						<summary>Details & troubleshooting</summary>
+						<p class="wb-muted">{refreshStatus.detail}</p>
+						{#if pollStopped && refreshing}<p class="wb-muted">
+								Automatic checks paused. Use Check again to see the latest status.
+							</p>{/if}{#if data.history.refresh?.nextRefreshAt}<p class="wb-muted">
+								Next check: {stamp(data.history.refresh.nextRefreshAt)}
+							</p>{/if}
+						<form
+							method="POST"
+							action="?/details"
+							use:enhance={() => {
+								detailsLoading = true;
+								return async ({ update }) => {
+									try {
+										await update({ reset: false });
+									} finally {
+										detailsLoading = false;
+									}
+								};
+							}}
+						>
+							<input type="hidden" name="offerId" value={data.history.offer.id} /><label
+								class="wb-check"
+								><input type="checkbox" name="confirmed" value="yes" required />The listing matches
+								this saved variant</label
+							><button class="btn btn-secondary" disabled={detailsLoading}
+								>{detailsLoading ? 'Updating…' : 'Update product details'}</button
 							>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		{:else}<p>No price observations for this offer.</p>{/if}
-		{#if history.refresh}
-			<p>
-				Refresh status: {history.refresh.state}.
-				{history.refresh.errorCode
-					? (refreshMessages[history.refresh.errorCode] ??
-						'The source could not confirm a fresh price.')
-					: ''}
-			</p>
-			{#if history.refreshAvailable && history.refresh.nextRefreshAt}
-				<p>Next automatic check: {stamp(history.refresh.nextRefreshAt)}</p>
+						</form>
+					</details>
+				</div>
 			{/if}
-		{/if}
-		{#if history.refreshAvailable}
-			<form method="POST" action="?/refresh" use:enhance>
-				<input type="hidden" name="offerId" value={history.offer.id} />
-				<button class="btn" disabled={refreshing}
-					>{refreshing ? 'Refreshing…' : 'Refresh price'}</button
+			{#if data.history}{@const history = data.history}
+				<section class="wb-card">
+					<div class="wb-card-head">
+						<h2>Price history</h2>
+						<span class="wb-badge">{history.stats.count} observations</span>
+					</div>
+					{#if prices.length}<PriceTimelineChart {prices} />
+						<div class="wb-metrics">
+							<div class="wb-metric">
+								<span>Lowest</span><strong>{money(history.stats.minimumPaise)}</strong>
+							</div>
+							<div class="wb-metric">
+								<span>Average</span><strong>{money(history.stats.averagePaise)}</strong>
+							</div>
+							<div class="wb-metric">
+								<span>Highest</span><strong>{money(history.stats.maximumPaise)}</strong>
+							</div>
+						</div>
+						<details>
+							<summary class="small-summary">View observations</summary>
+							<div class="wb-table-wrap">
+								<table>
+									<thead
+										><tr><th>Date</th><th>Item price</th><th>Checkout total</th><th>Source</th></tr
+										></thead
+									><tbody
+										>{#each history.observations as entry (entry.id)}<tr
+												><td>{entry.observedAt ? stamp(entry.observedAt) : entry.observedOn}</td><td
+													>{formatRupees(entry.itemPaise)}</td
+												><td>{money(entry.landedPaise)}</td><td
+													>{entry.sourceLabel || entry.source}</td
+												></tr
+											>{/each}</tbody
+									>
+								</table>
+							</div>
+						</details>{:else}<div class="wb-empty">
+							Your first price check starts the timeline.
+						</div>{/if}
+				</section>
+				<details class="wb-fold">
+					<summary>Add a price manually</summary>
+					<div class="wb-fold-body">
+						<form method="POST" action="?/record" use:enhance>
+							<input type="hidden" name="offerId" value={history.offer.id} />
+							<div class="wb-fields">
+								<label>Item price (₹)<input name="item" inputmode="decimal" required /></label
+								><label
+									>Date<input
+										name="date"
+										type="date"
+										value={data.today}
+										max={data.today}
+										required
+									/></label
+								>
+							</div>
+							<details class="record-extra">
+								<summary class="small-summary">Checkout details</summary>
+								<div class="wb-fields">
+									<label>Observed time (IST)<input name="time" type="time" /></label><label
+										>Tax (₹)<input name="tax" inputmode="decimal" /></label
+									><label>Delivery (₹)<input name="delivery" inputmode="decimal" /></label><label
+										>Discount (₹)<input name="discount" inputmode="decimal" /></label
+									><label
+										>Availability<select name="availability"
+											>{#each Object.entries(availability) as [value, label] (value)}<option {value}
+													>{label}</option
+												>{/each}</select
+										></label
+									><label>Source note<input name="source" maxlength="150" /></label>
+								</div>
+								<p class="wb-muted">
+									Use 0 for a confirmed zero charge. Leave unknown amounts blank.
+								</p>
+							</details>
+							<button class="btn btn-primary">Save price</button>
+						</form>
+					</div>
+				</details>
+				<details class="wb-fold">
+					<summary>Import price history</summary>
+					<div class="wb-fold-body">
+						<form
+							class="wb-stack"
+							method="POST"
+							action="?/import"
+							enctype="multipart/form-data"
+							use:enhance
+						>
+							<input type="hidden" name="offerId" value={history.offer.id} /><label
+								>CSV for this offer<input
+									type="file"
+									name="csv"
+									accept=".csv,text/csv"
+									required
+								/></label
+							><button class="btn btn-secondary">Import CSV</button>
+						</form>
+					</div>
+				</details>
+			{/if}
+		</div>
+		<aside class="wb-stack">
+			<section class="wb-card">
+				<div>
+					<h2>Your price targets</h2>
+					<p class="wb-muted">What you’re comfortable paying.</p>
+				</div>
+				<form
+					method="POST"
+					action="?/thresholds"
+					use:enhance={() =>
+						async ({ update }) =>
+							update({ reset: false })}
 				>
-			</form>
-			{#if !history.refresh}
-				<p>Your first refresh also schedules future price checks for this offer.</p>
-			{/if}
-		{:else}<p>Automatic refresh is unavailable. Record a price or import CSV history.</p>{/if}
-	</section>
-
-	<section>
-		<h2>Record a price</h2>
-		<form method="POST" action="?/record" use:enhance>
-			<input type="hidden" name="offerId" value={history.offer.id} />
-			<label
-				>Observed date<input
-					name="date"
-					type="date"
-					value={data.today}
-					max={data.today}
-					required
-				/></label
-			>
-			<label>Observed time (IST)<input name="time" type="time" /></label>
-			<label>Item price (₹)<input name="item" inputmode="decimal" required /></label>
-			<label>Extra tax (₹)<input name="tax" inputmode="decimal" /></label>
-			<label>Delivery (₹)<input name="delivery" inputmode="decimal" /></label>
-			<label>Discount (₹)<input name="discount" inputmode="decimal" /></label>
-			<label
-				>Availability<select name="availability">
-					{#each Object.entries(availability) as [value, label] (value)}<option {value}
-							>{label}</option
-						>{/each}
-				</select></label
-			>
-			<label
-				>Source note<input
-					name="source"
-					maxlength="150"
-					placeholder="e.g. Retailer checkout"
-				/></label
-			>
-			<button class="btn btn-primary">Record price</button>
-		</form>
-		<p>Enter zero for any confirmed zero charge. Leave unknown components blank.</p>
-	</section>
-
-	<section>
-		<h2>Import offer history</h2>
-		<p>
-			Upload a CSV with date and item price columns in INR. Confirm that every row is for this
-			seller and listing.
-		</p>
-		<form method="POST" action="?/import" enctype="multipart/form-data" use:enhance>
-			<input type="hidden" name="offerId" value={history.offer.id} />
-			<label>CSV file<input type="file" name="csv" accept=".csv,text/csv" required /></label>
-			<button class="btn btn-primary">Import history</button>
-		</form>
-	</section>
-{/if}
-
-{#if data.product.url || data.product.currentPricePaise > 0}
-	<p>
-		<a href={resolve('/products/[id]', { id: data.product.id })}
-			>View earlier product-level history</a
-		>
-	</p>
-{/if}
+					<div class="wb-fields">
+						<label
+							>Ideal (₹)<input
+								name="ideal"
+								inputmode="decimal"
+								value={amount(data.thresholds.idealPaise)}
+							/></label
+						><label
+							>Good (₹)<input
+								name="good"
+								inputmode="decimal"
+								value={amount(data.thresholds.goodPaise)}
+							/></label
+						><label
+							>Maximum (₹)<input
+								name="maximum"
+								inputmode="decimal"
+								value={amount(data.thresholds.maximumPaise)}
+							/></label
+						>
+					</div>
+					<button class="btn btn-primary form-save">Save targets</button>
+				</form>
+				{#if latestPrice}<p class="wb-muted">
+						{latestPrice.landedPaise === null
+							? 'Checkout total not confirmed.'
+							: 'Checkout total: ' + formatRupees(latestPrice.landedPaise)}
+					</p>{/if}
+			</section>
+			<section class="wb-card">
+				<h2>Retailer offers</h2>
+				{#if data.offers.length}<form
+						method="GET"
+						action={resolve('/products/[id]/offers', { id: data.product.id })}
+						class="offer-list"
+					>
+						{#each data.offers as offer (offer.id)}<button
+								class="offer-choice"
+								name="offer"
+								value={offer.id}
+								aria-pressed={data.history?.offer.id === offer.id}
+								><span>{offer.retailer}<small>{offer.seller || 'Saved listing'}</small></span><span
+									aria-hidden="true">↗</span
+								></button
+							>{/each}
+					</form>{:else}<p class="wb-muted">No offers added.</p>{/if}
+				<details>
+					<summary class="small-summary">+ Add another offer</summary>
+					<form class="wb-stack form-save" method="POST" action="?/offer" use:enhance>
+						<input type="hidden" name="variant" value={data.product.variant ?? ''} /><label
+							>Listing URL<input
+								name="url"
+								type="url"
+								maxlength="2000"
+								placeholder="https://…"
+							/></label
+						>
+						<div class="wb-fields">
+							<label
+								>Retailer<input
+									name="retailer"
+									maxlength="100"
+									placeholder="If entering manually"
+								/></label
+							><label>Seller<input name="seller" maxlength="150" /></label>
+						</div>
+						<label class="wb-check"
+							><input type="checkbox" name="confirmed" value="yes" required />Matches this product
+							and variant</label
+						><button class="btn btn-secondary">Add offer</button>
+					</form>
+				</details>
+			</section>
+			{#if data.goals.length}<section class="wb-card">
+					<h2>Link a purchase goal</h2>
+					<form class="wb-stack" method="POST" action="?/goal" use:enhance>
+						<label
+							>Goal<select name="goalId" required
+								><option value="">Choose a goal</option>{#each data.goals as goal (goal.id)}<option
+										value={goal.id}>{goal.name}</option
+									>{/each}</select
+							></label
+						><button class="btn btn-secondary">Link goal</button>
+					</form>
+				</section>{/if}
+			{#if data.product.description || Object.keys(data.product.specifications ?? {}).length || data.product.warnings?.length}<details
+					class="wb-fold"
+				>
+					<summary>Product information</summary>
+					<div class="wb-fold-body">
+						{#if data.product.description}<p class="wb-muted">{data.product.description}</p>{/if}
+						<dl class="wb-lines">
+							{#each Object.entries(data.product.specifications ?? {}) as [key, value] (key)}<div>
+									<dt>{key}</dt>
+									<dd>{value}</dd>
+								</div>{/each}
+						</dl>
+						{#each data.product.warnings ?? [] as warning, index (index)}<p class="wb-muted">
+								{warning}
+							</p>{/each}
+					</div>
+				</details>{/if}
+		</aside>
+	</div>
+</div>
 
 <style>
-	.product-summary {
+	.product-overview {
 		display: flex;
+		align-items: center;
 		flex-wrap: wrap;
 		gap: 24px;
-		align-items: flex-start;
 	}
 	.product-image {
-		width: min(180px, 100%);
-		height: 180px;
+		width: 112px;
+		height: 112px;
 		object-fit: contain;
 		border-radius: 12px;
-		background: #fff;
+		background: white;
 	}
-	.product-facts {
-		flex: 1 1 240px;
+	.price-copy {
+		display: grid;
+		gap: 8px;
+		flex: 1 1 220px;
 		min-width: 0;
-		overflow-wrap: anywhere;
 	}
-	.product-facts p,
-	.refresh-panel p {
-		margin-block: 10px;
-	}
-	.headline-price {
-		font-size: clamp(1.8rem, 5vw, 2.5rem);
-		font-weight: 700;
-	}
-	.refresh-panel {
-		border-inline-start: 4px solid var(--brand-dot);
-	}
-	.product-actions {
+	.retrieval-strip {
+		padding: 16px 18px;
+		border: 1px solid var(--border);
+		border-radius: 12px;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
+		justify-content: space-between;
 		gap: 12px;
-	}
-	details {
-		margin-top: 16px;
-	}
-	summary {
-		cursor: pointer;
-		font-weight: 600;
-	}
-	section {
-		margin-block: 1.25rem;
-		padding: clamp(1rem, 3vw, 1.5rem);
-		border: 1px solid var(--border);
-		border-radius: 14px;
 		background: var(--surface);
 	}
-	h2 {
-		margin-bottom: 0.75rem;
+	.retrieval-strip strong {
+		font-size: 13px;
+		font-weight: 550;
 	}
-	form {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: end;
-		gap: 0.75rem;
-		margin-block: 0.75rem;
+	.retrieval-strip p {
+		max-width: 52ch;
 	}
-	label {
-		display: grid;
-		flex: 1 1 11rem;
-		gap: 0.3rem;
-	}
-	input:not([type='checkbox'], [type='hidden']),
-	select {
-		color: var(--foreground);
-		background: var(--background);
-		border: 1px solid var(--border);
-		padding: 0.55rem;
-		border-radius: 8px;
-		width: 100%;
-	}
-	.confirm {
-		display: flex;
-		align-items: center;
+	.retrieval-help {
 		flex: 1 1 100%;
 	}
-	.offers {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.65rem;
-		list-style: none;
-		padding: 0;
+	.retrieval-help summary,
+	.small-summary {
+		font-size: 12px;
+		color: var(--foreground-secondary);
+		cursor: pointer;
 	}
-	.offers button {
-		display: block;
-		padding: 0.4rem 0.65rem;
-		border: 1px solid var(--border);
-		border-radius: 0.5rem;
+	.retrieval-help p,
+	.retrieval-help form {
+		margin-top: 12px;
 	}
-	.offers [aria-pressed='true'] {
-		font-weight: 700;
-		border-color: var(--primary);
-	}
-	dl {
+	.retrieval-help form {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 0.4rem 1rem;
-		max-width: 28rem;
+		gap: 12px;
 	}
-	dd {
-		margin: 0;
-		text-align: right;
+	.record-extra {
+		margin-block: 16px;
 	}
-	.table-wrap {
-		overflow-x: auto;
+	.record-extra .wb-fields {
+		margin-block: 16px;
 	}
-	table {
-		width: 100%;
-		border-collapse: collapse;
+	.offer-list {
+		display: grid;
+		gap: 8px;
+	}
+	.offer-choice {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
 		text-align: left;
+		gap: 12px;
+		padding: 12px;
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		background: var(--background);
+		color: var(--foreground);
+		font: inherit;
+		cursor: pointer;
 	}
-	th,
-	td {
-		padding: 0.6rem;
-		border-bottom: 1px solid var(--border);
-		vertical-align: top;
+	.offer-choice[aria-pressed='true'] {
+		border-color: var(--brand-dot);
 	}
-	[role='alert'] {
-		color: var(--danger-foreground);
+	.offer-choice small {
+		display: block;
+		color: var(--foreground-secondary);
+		font-size: 11px;
+		margin-top: 3px;
+	}
+	.form-save {
+		margin-top: 18px;
 	}
 </style>
