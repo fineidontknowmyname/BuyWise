@@ -35,7 +35,7 @@
 
 	const stateConfig = {
 		BUY: {
-			label: 'Buy',
+			label: 'Ready to buy',
 			badgeClass: 'badge-success',
 			icon: CheckCircle2,
 			color: 'var(--success)'
@@ -53,7 +53,7 @@
 			color: 'var(--primary)'
 		},
 		REASSESS: {
-			label: 'Reassess',
+			label: 'Check incomplete',
 			badgeClass: 'badge-warning',
 			icon: AlertTriangle,
 			color: 'var(--warning)'
@@ -63,11 +63,19 @@
 	const decision = $derived(data.decision);
 	const activeState = $derived(stateConfig[decision.state] ?? stateConfig.REASSESS);
 	const StateIcon = $derived(activeState.icon);
-	const decisionDate = new Intl.DateTimeFormat('en-IN', {
-		dateStyle: 'medium',
-		timeStyle: 'short',
-		timeZone: 'Asia/Kolkata'
-	});
+	const decisionSummary = $derived(
+		decision.state === 'REASSESS'
+			? decision.reasonCodes.includes('goal_inactive')
+				? 'Resume this goal before checking a purchase.'
+				: decision.finance.state === 'UNKNOWN' || decision.price.state === 'UNKNOWN'
+					? 'Complete the missing checks below before deciding to buy.'
+					: 'Your funds and the offer both need attention before buying.'
+			: decision.state === 'BUY'
+				? 'Your saved funds and the confirmed price meet your purchase checks.'
+				: decision.state === 'SAVE_MORE'
+					? 'Your finances need attention before this purchase.'
+					: 'The current offer does not meet your price checks.'
+	);
 
 	// Modals
 	let showTargetPriceModal = $state(false);
@@ -280,25 +288,16 @@
 </div>
 
 {#snippet goalTracking()}
-	<div class="decision-hero card {activeState.badgeClass}">
+	<div class="decision-hero card">
 		<div class="hero-main">
 			<div class="hero-left">
-				<StateIcon size={36} class="state-icon" />
+				<StateIcon size={24} class="state-icon" />
 				<div>
-					<span class="card-kicker">Purchase decision</span>
+					<span class="card-kicker">Purchase check</span>
 					<h2 class="hero-title">
-						Verdict:
 						<span class="hero-verdict" data-testid="decision-state">{activeState.label}</span>
 					</h2>
-					<p class="hero-desc">{decision.explanation}</p>
-				</div>
-			</div>
-			<div class="hero-right">
-				<div class="engine-badge">
-					<span>Rules {decision.rulesVersion}</span>
-				</div>
-				<div class="timestamp font-mono text-xs">
-					Live assessment {decisionDate.format(new Date(decision.decidedAt))}
+					<p class="hero-desc">{decisionSummary}</p>
 				</div>
 			</div>
 		</div>
@@ -319,11 +318,11 @@
 			}}
 		>
 			<button class="btn btn-primary" disabled={reassessing}>
-				{reassessing ? 'Reassessing…' : 'Reassess and save'}
+				{reassessing ? 'Updating…' : 'Update check'}
 			</button>
 		</form>
 		{#if form?.assessmentSaved}
-			<p role="status">Assessment saved to decision history.</p>
+			<p role="status">Purchase check updated.</p>
 		{:else if form?.assessmentError}
 			<p role="alert">{form.assessmentError}</p>
 		{/if}
@@ -1253,7 +1252,8 @@
 	/* Hero Banner */
 	.decision-hero {
 		padding: 24px;
-		border-left: 5px solid var(--primary);
+		background: var(--surface);
+		color: var(--foreground);
 	}
 
 	.hero-main {
@@ -1276,8 +1276,8 @@
 	}
 
 	.hero-verdict {
-		color: var(--accent);
-		font-weight: 800;
+		color: var(--foreground);
+		font-weight: 650;
 	}
 
 	.hero-desc {
@@ -1364,10 +1364,6 @@
 		flex-wrap: wrap;
 		gap: 8px;
 		align-items: center;
-	}
-
-	.inline-form {
-		display: inline-block;
 	}
 
 	/* Specs Section */

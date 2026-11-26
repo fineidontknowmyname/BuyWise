@@ -17,7 +17,7 @@
 		BUY: 'Buy',
 		WAIT: 'Wait',
 		SAVE_MORE: 'Save more',
-		REASSESS: 'Reassess',
+		REASSESS: 'Check incomplete',
 		READY: 'Ready',
 		NOT_READY: 'Not ready',
 		UNKNOWN: 'Unconfirmed',
@@ -36,6 +36,26 @@
 		timeZone: 'Asia/Kolkata'
 	});
 	const stamp = (value: string) => dateTime.format(new Date(value));
+	const financeStatus = $derived(
+		decision.finance.state === 'READY'
+			? 'Ready'
+			: decision.finance.state === 'UNKNOWN'
+				? 'Needs information'
+				: 'Needs attention'
+	);
+	const priceStatus = $derived(
+		decision.price.state === 'ATTRACTIVE'
+			? 'Meets price checks'
+			: decision.price.state === 'UNKNOWN'
+				? 'Needs information'
+				: 'Wait for a better price'
+	);
+	const firstReason = (codes: string[]) =>
+		decision.reasons.find((reason) => codes.includes(reason.code))?.message;
+	const needsGoalFunds = $derived(
+		decision.finance.state === 'NOT_READY' &&
+			decision.finance.reasonCodes[0] === 'goal_funds_shortfall'
+	);
 </script>
 
 {#snippet readiness(value: Decision)}
@@ -57,7 +77,7 @@
 				<dt>Emergency reserve</dt>
 				<dd>{money(value.emergencyBalancePaise)} / {money(f.emergencyTargetPaise)}</dd>
 				<dt>Operating buffer</dt>
-				<dd>{money(f.operatingBufferPaise)}</dd>
+				<dd>{f.profileRevision ? money(f.operatingBufferPaise) : 'Not set'}</dd>
 				<dt>Liquid cash after purchase and other goals</dt>
 				<dd>{money(value.afterPurchasePaise)}</dd>
 				<dt>Monthly margin before buffer</dt>
@@ -131,32 +151,62 @@
 
 <section aria-label="Purchase readiness">
 	{#if !historyOnly}
-		{@render readiness(decision)}
-		<nav aria-label="Update decision inputs">
-			<a href={resolve('/finances')}>Review financial profile</a>
-			{#if decision.evidence.prices.productId}
-				<a href={resolve('/products/[id]/offers', { id: decision.evidence.prices.productId })}>
-					Review retailer offers
+		<div class="check-row">
+			<div>
+				<h3>Funds <span>{financeStatus}</span></h3>
+				<p>
+					{decision.finance.state === 'READY'
+						? 'Goal funds cover this purchase and protect your reserves.'
+						: firstReason(decision.finance.reasonCodes)}
+				</p>
+			</div>
+			{#if decision.finance.state !== 'READY'}
+				<a
+					href={needsGoalFunds
+						? resolve('/goals/[id]/plan', { id: decision.goalId })
+						: resolve('/finances')}
+				>
+					{needsGoalFunds ? 'Add goal funds' : 'Review finances'}
 				</a>
 			{/if}
-		</nav>
+		</div>
+		<div class="check-row">
+			<div>
+				<h3>Price <span>{priceStatus}</span></h3>
+				<p>
+					{decision.price.state === 'ATTRACTIVE'
+						? `${money(decision.checkoutPaise)} confirmed checkout total`
+						: firstReason(decision.price.reasonCodes)}
+				</p>
+			</div>
+			{#if decision.evidence.prices.productId}
+				<a href={resolve('/products/[id]/offers', { id: decision.evidence.prices.productId })}>
+					Check offer
+				</a>
+			{:else}
+				<a href={resolve('/products')}>Find product</a>
+			{/if}
+		</div>
+		{#if decision.reasonCodes.includes('goal_inactive')}
+			<p>This goal is inactive. Resume it before checking a purchase.</p>
+		{/if}
+		<details>
+			<summary>How this was checked</summary>
+			{@render readiness(decision)}
+		</details>
 	{/if}
 	<details id="decision-history" open={historyLink}>
-		<summary>Saved decision history</summary>
+		<summary>Previous checks</summary>
 		{#if history === null}
 			<p>Decision history is temporarily unavailable.</p>
 		{:else if history.length === 0}
 			<p>
-				{historyOnly
-					? 'No saved purchase assessments.'
-					: 'Choose Reassess and save to record your first assessment.'}
+				{historyOnly ? 'No saved purchase assessments.' : 'No previous checks yet.'}
 			</p>
 		{:else}
 			{#each history as previous (previous.id)}
 				<details class="history-item" id={'decision-' + previous.id}>
-					<summary
-						>{labels[previous.state]} · {stamp(previous.decidedAt)} · {previous.rulesVersion}</summary
-					>
+					<summary>{labels[previous.state]} · {stamp(previous.decidedAt)}</summary>
 					<p>{previous.explanation}</p>
 					{@render readiness(previous)}
 				</details>
@@ -204,10 +254,36 @@
 	dd {
 		margin: 0;
 	}
-	nav {
+	.check-row {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 16px;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+		padding-block: 12px;
+		border-bottom: 1px solid var(--border-subtle);
+	}
+	.check-row > div {
+		flex: 1 1 240px;
+	}
+	.check-row h3 {
+		font-size: 0.9375rem;
+		font-weight: 600;
+	}
+	.check-row span {
+		margin-left: 10px;
+		font-size: 0.8125rem;
+		font-weight: 450;
+		color: var(--foreground-secondary);
+	}
+	.check-row p {
+		margin: 6px 0 0;
+		font-size: 0.875rem;
+		color: var(--foreground-secondary);
+	}
+	.check-row a {
+		font-size: 0.875rem;
+		font-weight: 550;
 	}
 	summary {
 		cursor: pointer;
