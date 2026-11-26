@@ -46,9 +46,13 @@ func newDomainHandler(deps Dependencies) http.Handler {
 		history = decision.NewStore(pool)
 	}
 	decisionService := decision.NewService(goalLookup{goals: goalService}, source, history, deps.Now)
+	financeHandler := finance.NewHandler(financeService, deps.Logger)
+	if goalsOK {
+		financeHandler.WithAccountReservations(goalsStore.AccountReservations)
+	}
 	modules := []httpserver.Module{
 		goals.NewHandler(goalService, deps.Logger),
-		finance.NewHandler(financeService, deps.Logger),
+		financeHandler,
 		pricing.NewHandler(pricingService, deps.Logger, deps.PriceProvider),
 		decision.NewHandler(decisionService, deps.Logger),
 	}

@@ -3,11 +3,16 @@
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import PriceTimelineChart from '#lib/components/PriceTimelineChart.svelte';
+	import { priceRefreshStatus } from '#lib/priceRefresh.js';
 	import { formatRupees } from '#lib/money.js';
 	import type { PriceObservation } from '#lib/server/api.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+	let pollStopped = $state(false);
+	let detailsLoading = $state(false);
+	const refreshStatus = $derived(priceRefreshStatus(data.history?.refresh));
+	const latestPrice = $derived(data.history?.observations[0]);
 	const refreshing = $derived(
 		data.history?.refresh?.state === 'queued' || data.history?.refresh?.state === 'running'
 	);
@@ -20,11 +25,26 @@
 		provider_credentials: 'Live price access is unavailable.'
 	};
 	$effect(() => {
+		pollStopped = false;
 		if (!refreshing || !refreshJobID) return;
 		let checks = 0;
-		const poll = window.setInterval(() => {
-			if (++checks <= 12) void invalidateAll();
-			else window.clearInterval(poll);
+		let pending = false;
+		const poll = window.setInterval(async () => {
+			if (pending) return;
+			if (++checks > 12) {
+				pollStopped = true;
+				window.clearInterval(poll);
+				return;
+			}
+			pending = true;
+			try {
+				await invalidateAll();
+			} catch {
+				pollStopped = true;
+				window.clearInterval(poll);
+			} finally {
+				pending = false;
+			}
 		}, 5000);
 		return () => window.clearInterval(poll);
 	});
@@ -65,8 +85,129 @@
 {#if form?.error}<p role="alert">{form.error}</p>{/if}
 {#if form?.notice}<p role="status">{form.notice}</p>{/if}
 
+<section class="product-summary" aria-label="Saved product and latest price">
+	{#if data.product.imageUrl}<img
+			class="product-image"
+			src={data.product.imageUrl}
+			alt={data.product.name}
+			referrerpolicy="no-referrer"
+			onerror={(event) => ((event.currentTarget as HTMLImageElement).hidden = true)}
+		/>{/if}
+	<div class="product-facts">
+		<h2>Product overview</h2>
+		<p>
+			{data.product.brand || 'Brand not recorded'}{data.product.model
+				? ` · ${data.product.model}`
+				: ''}
+		</p>
+		<p>Saved variant: {data.product.variant || 'Not recorded'}</p>
+		{#if data.product.description}<p>{data.product.description}</p>{/if}
+		{#each data.product.warnings ?? [] as warning, index (index)}<p>{warning}</p>{/each}
+		{#if Object.keys(data.product.specifications ?? {}).length}
+			<details>
+				<summary>Saved specifications</summary>
+				<dl>
+					{#each Object.entries(data.product.specifications ?? {}) as [key, value] (key)}<dt>
+							{key}
+						</dt>
+						<dd>{value}</dd>{/each}
+				</dl>
+			</details>
+		{/if}
+		{#if data.product.lastRetrievedAt}<p>
+				Product details observed: {stamp(data.product.lastRetrievedAt)}
+			</p>{/if}
+		{#if data.history?.offer.listingUrl}<a
+				href={data.history.offer.listingUrl}
+				target="_blank"
+				rel="external noopener noreferrer">Open {data.history.offer.retailer} listing</a
+			>{/if}
+		{#if latestPrice}
+			<p class="headline-price">{formatRupees(latestPrice.itemPaise)}</p>
+			<p>
+				Latest observed item price · {data.history?.offer.retailer} · {data.history?.freshness ===
+				'stale'
+					? 'Stale observation'
+					: 'Recent observation'}
+			</p>
+			<p>
+				{latestPrice.sourceLabel || latestPrice.source} · {latestPrice.observedAt
+					? stamp(latestPrice.observedAt)
+					: latestPrice.observedOn}
+			</p>
+			<p>
+				Checkout total: {latestPrice.landedPaise === null
+					? 'Not confirmed; delivery, tax or discounts are missing.'
+					: formatRupees(latestPrice.landedPaise)}
+			</p>
+		{:else}<p>
+				No price observation saved for this offer yet. Refresh the price or record one below.
+			</p>{/if}
+	</div>
+</section>
+
+{#if data.history}
+	<section class="refresh-panel" aria-label="Price retrieval status">
+		<div role="status" aria-live="polite">
+			<h2>{refreshStatus.title}</h2>
+			<p>{refreshStatus.detail}</p>
+			{#if data.history.refresh}<p>Attempts: {data.history.refresh.attempts}</p>{/if}
+			{#if data.history.refresh?.nextRefreshAt}<p>
+					Next automatic check: {stamp(data.history.refresh.nextRefreshAt)}
+				</p>{/if}
+			{#if pollStopped && refreshing}<p>
+					Still waiting. Automatic status checks have paused. Check again; if this persists, the
+					backend worker may need attention.
+				</p>{/if}
+		</div>
+		<div class="product-actions">
+			{#if data.history.refreshAvailable}<form method="POST" action="?/refresh" use:enhance>
+					<input type="hidden" name="offerId" value={data.history.offer.id} /><button
+						class="btn btn-primary"
+						disabled={refreshing}>{refreshing ? 'Refresh in progress' : 'Refresh price'}</button
+					>
+				</form>{:else}<p>Automatic price refresh is unavailable for this listing.</p>{/if}
+			<button type="button" class="btn btn-secondary" onclick={() => invalidateAll()}
+				>Check status</button
+			>
+		</div>
+		<details>
+			<summary>Retrieve missing product details</summary>
+			<p>
+				Update the name, fill a missing brand and retrieve the available image from this listing.
+				Your saved variant and price thresholds stay in place. This uses the shared product lookup
+				allowance.
+			</p>
+			<form
+				method="POST"
+				action="?/details"
+				use:enhance={() => {
+					detailsLoading = true;
+					return async ({ update }) => {
+						try {
+							await update({ reset: false });
+						} finally {
+							detailsLoading = false;
+						}
+					};
+				}}
+			>
+				<input type="hidden" name="offerId" value={data.history.offer.id} />
+				<label class="confirm"
+					><input type="checkbox" name="confirmed" value="yes" required /> I checked that this listing
+					matches my saved product and variant.</label
+				>
+				<button class="btn" disabled={detailsLoading}
+					>{detailsLoading ? 'Retrieving details...' : 'Update product details'}</button
+				>
+			</form>
+		</details>
+	</section>
+{/if}
+
 <section>
 	<h2>Retailer offers</h2>
+	<p>Choose a saved offer to view its price, or add another retailer below.</p>
 	{#if data.offers.length}
 		<form
 			method="GET"
@@ -113,6 +254,10 @@
 
 <section>
 	<h2>Price thresholds</h2>
+	<p>
+		These are your buying targets. Set the prices you consider ideal, good and the maximum you will
+		pay.
+	</p>
 	<form
 		method="POST"
 		action="?/thresholds"
@@ -318,6 +463,48 @@
 {/if}
 
 <style>
+	.product-summary {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 24px;
+		align-items: flex-start;
+	}
+	.product-image {
+		width: min(180px, 100%);
+		height: 180px;
+		object-fit: contain;
+		border-radius: 12px;
+		background: #fff;
+	}
+	.product-facts {
+		flex: 1 1 240px;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.product-facts p,
+	.refresh-panel p {
+		margin-block: 10px;
+	}
+	.headline-price {
+		font-size: clamp(1.8rem, 5vw, 2.5rem);
+		font-weight: 700;
+	}
+	.refresh-panel {
+		border-inline-start: 4px solid var(--brand-dot);
+	}
+	.product-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 12px;
+	}
+	details {
+		margin-top: 16px;
+	}
+	summary {
+		cursor: pointer;
+		font-weight: 600;
+	}
 	section {
 		margin-block: 1.25rem;
 		padding: clamp(1rem, 3vw, 1.5rem);

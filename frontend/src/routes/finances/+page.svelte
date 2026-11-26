@@ -29,11 +29,22 @@
 	let rows = $state(untrack(readRows));
 	let loadedRevision = $state(untrack(() => data.foundation?.profile.revision));
 	let savingProfile = $state(false);
+	let useCategoryBudgets = $state(
+		untrack(() =>
+			data.foundation?.profile.revision ? data.foundation.profile.useCategoryBudgets : true
+		)
+	);
 	function readRows() {
 		return (data.foundation?.profile.items ?? []).map((item) => ({
 			name: item.name,
 			kind: item.kind,
 			frequency: item.frequency,
+			budgetCategory:
+				data.foundation?.profile.budgetCategoryLinks?.[item.name] ??
+				data.foundation?.connections.budgets.find(
+					(b) => b.name.trim().toLowerCase() === item.name.trim().toLowerCase()
+				)?.categoryId ??
+				'',
 			amount: String(item.amountPaise / 100)
 		}));
 	}
@@ -42,6 +53,7 @@
 		if (profile && profile.revision !== loadedRevision) {
 			loadedRevision = profile.revision;
 			rows = readRows();
+			useCategoryBudgets = profile.useCategoryBudgets;
 		}
 	});
 </script>
@@ -52,8 +64,8 @@
 	<p class="eyebrow">My Money</p>
 	<h1>Financial setup</h1>
 	<p>
-		Plan with your income and expected outflows. Recorded account balances and expenses stay
-		separate.
+		Use your existing accounts and budgets, then review income and spending assumptions for your
+		plan.
 	</p>
 </div>
 <div class="money-guide" aria-label="How My Money works">
@@ -109,6 +121,51 @@
 	</section>
 
 	<section>
+		<h2>Connected accounts and budgets</h2>
+		<p class="section-description">
+			Account balances update from your records. Monthly budgets can supply your spending plan
+			without entering the same allowance again.
+		</p>
+		<div class="connected-grid">
+			{#each foundation.accounts as account (account.id)}
+				<div class="connected-card">
+					<strong>{account.name}</strong>
+					<p>{formatRupees(account.balancePaise)} recorded</p>
+					<p>
+						{account.purpose === 'emergency_reserve'
+							? 'Protected emergency reserve'
+							: foundation.reservationsAvailable
+								? `${formatRupees(account.availablePaise)} after goal reservations`
+								: 'Goal reservations unavailable'}
+					</p>
+					{#if account.reservedPaise}<p>
+							{formatRupees(account.reservedPaise)} reserved for goals
+						</p>{/if}
+				</div>
+			{:else}<p>Add an account to see recorded funds here.</p>{/each}
+		</div>
+		<p class="section-description">
+			Unreserved balances are before your operating buffer and other obligations. They are not
+			monthly income.
+		</p>
+		<a href={resolve('/accounts')}>Manage accounts</a>
+		<h3>Category spending plan</h3>
+		<dl>
+			{#each foundation.connections.budgets as budget (budget.categoryId)}<dt>{budget.name}</dt>
+				<dd>{formatRupees(budget.amountPaise)} / month</dd>{:else}<dt>No category budgets saved</dt>
+				<dd>Not configured</dd>{/each}
+		</dl>
+		<p>
+			{profile.useCategoryBudgets
+				? foundation.connections.budgets.length
+					? 'These budgets are included once in your saved monthly estimate.'
+					: 'No category budgets exist; manual spending allowances still apply.'
+				: 'Enable category budgets below and save setup to use this spending plan.'}
+		</p>
+		<a href={resolve('/budgets')}>Manage budgets and categories</a>
+	</section>
+
+	<section>
 		<h2>Income & planned outflows</h2>
 		<p class="section-description">
 			Edit an amount below or add an entry. Saving updates your current assumptions; it does not
@@ -130,6 +187,26 @@
 			aria-busy={savingProfile}
 		>
 			<input type="hidden" name="revision" value={profile.revision} />
+			<label class="budget-choice"
+				><input
+					type="checkbox"
+					name="useCategoryBudgets"
+					value="yes"
+					bind:checked={useCategoryBudgets}
+				/> Use category budgets for my monthly spending plan</label
+			>
+			{#if useCategoryBudgets}
+				<p class="section-description">
+					Category budgets replace discretionary allowance entries. For other expenses already
+					covered by a budget, select that category below so it is counted once. Unlinked
+					obligations remain additional costs. Deleting a linked budget restores that entry's manual
+					amount.
+				</p>
+				{#if !foundation.connections.budgets.length}<p role="status">
+						No category budgets exist yet. Manual allowances continue to apply until you add a
+						budget.
+					</p>{/if}
+			{/if}
 			{#each rows as row, index (row)}
 				<fieldset class="form-grid">
 					<legend>Entry {index + 1}</legend>
@@ -160,6 +237,25 @@
 							bind:value={row.amount}
 						/></label
 					>
+					{#if !row.kind.includes('income')}
+						<label
+							>Covered by category budget<select
+								name="budgetCategory"
+								bind:value={row.budgetCategory}
+							>
+								<option value="">Additional obligation / not covered</option>
+								{#each foundation.connections.budgets as budget (budget.categoryId)}<option
+										value={budget.categoryId}>{budget.name}</option
+									>{/each}
+								{#if row.budgetCategory && !foundation.connections.budgets.some((b) => b.categoryId === row.budgetCategory)}<option
+										value={row.budgetCategory}>Budget removed: manual amount applies</option
+									>{/if}
+							</select></label
+						>
+					{:else}<input type="hidden" name="budgetCategory" value="" />{/if}
+					{#if useCategoryBudgets && row.kind === 'discretionary'}<p>
+							Replaced by category budgets while linked.
+						</p>{/if}
 					<button
 						type="button"
 						class="btn btn-secondary"
@@ -175,9 +271,52 @@
 				class="btn btn-secondary"
 				disabled={rows.length >= 100}
 				onclick={() => {
-					rows.push({ name: '', kind: 'fixed_income', frequency: 'monthly', amount: '' });
+					rows.push({
+						name: '',
+						kind: 'fixed_income',
+						frequency: 'monthly',
+						amount: '',
+						budgetCategory: ''
+					});
 				}}>Add entry</button
 			>
+			<h3>Suggestions from recorded transactions</h3>
+			<p class="section-description">
+				Three complete months: {foundation.connections.historyFrom} to {foundation.connections
+					.historyThrough}. Amounts are monthly averages, including months with no entries. Income
+				needs records in at least two months. Review one-off receipts before accepting; no
+				suggestion changes your plan until you save.
+			</p>
+			<div class="connected-grid">
+				{#each foundation.connections.suggestions as suggestion (suggestion.categoryId)}
+					<div class="connected-card">
+						<strong>{suggestion.name}</strong>
+						<p>
+							{suggestion.kind === 'variable_income'
+								? 'Income to review'
+								: 'Spending without a category budget'}: {formatRupees(suggestion.amountPaise)} / month
+						</p>
+						<p>Recorded in {suggestion.monthsObserved} of 3 months.</p>
+						<button
+							type="button"
+							class="btn btn-secondary"
+							disabled={rows.length >= 100 ||
+								rows.some((row) => row.name.trim().toLowerCase() === suggestion.name.toLowerCase())}
+							onclick={() =>
+								rows.push({
+									name: suggestion.name,
+									kind: suggestion.kind,
+									frequency: 'monthly',
+									amount: String(suggestion.amountPaise / 100),
+									budgetCategory: ''
+								})}>Add to review</button
+						>
+					</div>
+				{:else}<p>
+						No suggestions yet. Record more history or add your expected income and obligations
+						manually.
+					</p>{/each}
+			</div>
 			{#key profile.revision}
 				<div class="form-grid">
 					<label>
@@ -327,6 +466,31 @@
 {/if}
 
 <style>
+	.connected-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+		gap: 12px;
+		margin-block: 12px;
+	}
+	.connected-card {
+		padding: 14px;
+		border: 1px solid var(--border);
+		border-radius: 12px;
+	}
+	.connected-card p {
+		margin-block: 8px;
+		color: var(--foreground-secondary);
+	}
+	.budget-choice {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-block: 16px;
+	}
+	.budget-choice input[type='checkbox'] {
+		width: 18px;
+		min-height: 18px;
+	}
 	.setup-heading {
 		display: grid;
 		gap: var(--space-2);

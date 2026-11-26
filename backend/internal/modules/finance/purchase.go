@@ -68,7 +68,10 @@ func (s *Store) PurchaseFinances(ctx context.Context, now time.Time) (PurchaseFi
 		id := account.ID.String()
 		balances = append(balances, PlanningAccount{id, account.Name, account.BalancePaise, purposes[id]})
 	}
-	estimate := profile.estimate()
+	estimate, err := s.profileCapacity(ctx, profile)
+	if err != nil {
+		return PurchaseFinances{}, err
+	}
 	debt := profile.DebtStatus
 	if debt == "" && !slices.ContainsFunc(profile.Items, func(item profileItem) bool { return item.Kind == "debt" }) {
 		debt = "none_declared"

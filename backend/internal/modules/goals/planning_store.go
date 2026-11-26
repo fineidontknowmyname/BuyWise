@@ -87,6 +87,10 @@ func (s *Store) fundingHistory(ctx context.Context, id uuid.UUID) ([]fundingEntr
 	return result, rows.Err()
 }
 
+func (s *Store) AccountReservations(ctx context.Context) (map[string]int64, error) {
+	return s.reservations(ctx)
+}
+
 func (s *Store) reservations(ctx context.Context) (map[string]int64, error) {
 	rows, err := database.Scoped(ctx, s.pool).Query(ctx, `SELECT f.account_id::text, SUM(f.amount_paise)::bigint
         FROM goals.reserved_funds f GROUP BY f.account_id`)

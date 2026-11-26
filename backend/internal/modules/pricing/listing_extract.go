@@ -22,6 +22,7 @@ type listingPreview struct {
 	Category              string     `json:"category,omitempty"`
 	ImageURL              string     `json:"imageUrl,omitempty"`
 	CurrentPricePaise     int64      `json:"currentPricePaise,omitempty"`
+	Availability          string     `json:"availability,omitempty"`
 	ObservedAt            *time.Time `json:"observedAt,omitempty"`
 	Source                string     `json:"source,omitempty"`
 	ManualDetailsRequired bool       `json:"manualDetailsRequired"`

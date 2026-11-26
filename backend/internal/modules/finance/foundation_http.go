@@ -1,6 +1,7 @@
 package finance
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -11,12 +12,15 @@ import (
 )
 
 type foundationHandler struct {
-	store  *Store
-	logger *slog.Logger
-	today  func() time.Time
+	reservations func(context.Context) (map[string]int64, error)
+	store        *Store
+	logger       *slog.Logger
+	today        func() time.Time
 }
 
 type foundationView struct {
+	ReservationsAvailable bool                `json:"reservationsAvailable"`
+	Connections           setupConnections    `json:"connections"`
 	Profile               financialProfile    `json:"profile"`
 	Capacity              capacity            `json:"capacity"`
 	Accounts              []designatedAccount `json:"accounts"`
@@ -27,7 +31,9 @@ type foundationView struct {
 
 type designatedAccount struct {
 	accountResponse
-	Purpose string `json:"purpose"`
+	Purpose        string `json:"purpose"`
+	ReservedPaise  int64  `json:"reservedPaise"`
+	AvailablePaise int64  `json:"availablePaise"`
 }
 
 func (h foundationHandler) register(mux *http.ServeMux) {
@@ -56,7 +62,26 @@ func (h foundationHandler) getProfile(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	view := foundationView{Profile: profile, Capacity: profile.estimate(), Accounts: []designatedAccount{}}
+	estimate, err := h.store.profileCapacity(ctx, profile)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	connections, err := h.store.setupConnections(ctx, h.today())
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	view := foundationView{Profile: profile, Capacity: estimate, Connections: connections, Accounts: []designatedAccount{}}
+	reservations := make(map[string]int64)
+	if h.reservations != nil {
+		reservations, err = h.reservations(ctx)
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		view.ReservationsAvailable = true
+	}
 	for _, a := range accounts {
 		purpose := purposes[a.ID.String()]
 		switch purpose {
@@ -67,7 +92,12 @@ func (h foundationHandler) getProfile(w http.ResponseWriter, r *http.Request) {
 		default:
 			purpose = "everyday"
 		}
-		view.Accounts = append(view.Accounts, designatedAccount{accountResponse: toAccountResponse(a), Purpose: purpose})
+		available := max(0, a.BalancePaise-reservations[a.ID.String()])
+		if purpose == "emergency_reserve" {
+			available = 0
+		}
+		view.Accounts = append(view.Accounts, designatedAccount{accountResponse: toAccountResponse(a), Purpose: purpose,
+			ReservedPaise: reservations[a.ID.String()], AvailablePaise: available})
 	}
 	view.EmergencyGapPaise = max(0, profile.EmergencyTargetPaise-view.EmergencySavingsPaise)
 	httpjson.Write(w, 200, view)
@@ -78,6 +108,14 @@ func (h foundationHandler) putProfile(w http.ResponseWriter, r *http.Request) {
 	if httpjson.Decode(w, r, &profile) != nil || !profile.validate() {
 		httpjson.WriteError(w, 400, "invalid_profile", "Check the financial assumptions, amount and frequency of each entry.")
 		return
+	}
+	for _, raw := range profile.BudgetCategoryLinks {
+		id, _ := uuid.Parse(raw)
+		category, err := h.store.GetCategory(r.Context(), id)
+		if err != nil || category.Kind != Expense {
+			httpjson.WriteError(w, 400, "invalid_profile", "Choose one of your expense categories for each linked budget.")
+			return
+		}
 	}
 	profile, err := h.store.saveProfile(r.Context(), profile)
 	if err != nil {

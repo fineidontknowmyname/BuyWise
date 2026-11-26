@@ -187,6 +187,9 @@ func (s *Store) CategoryTransactionCount(ctx context.Context, id uuid.UUID) (int
 }
 
 func (s *Store) DeleteBudget(ctx context.Context, categoryID uuid.UUID) error {
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return err
+	}
 	_, err := database.Scoped(ctx, s.pool).Exec(ctx, `DELETE FROM finance.budgets WHERE category_id = $1::uuid`, categoryID.String())
 	if err != nil {
 		return fmt.Errorf("delete budget: %w", err)
@@ -318,6 +321,9 @@ func scanTransaction(row pgx.Row) (Transaction, error) {
 }
 
 func (s *Store) UpsertBudget(ctx context.Context, budget Budget) error {
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return err
+	}
 	_, err := database.Scoped(ctx, s.pool).Exec(ctx,
 		`INSERT INTO finance.budgets (category_id, limit_paise, updated_at) VALUES ($1::uuid, $2, $3)
 		ON CONFLICT (category_id) DO UPDATE SET limit_paise = EXCLUDED.limit_paise, updated_at = EXCLUDED.updated_at`,

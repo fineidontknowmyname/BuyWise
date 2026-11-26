@@ -22,3 +22,7 @@ reverse-engineering/
 /backend/.expense-v2-test-server.log
 /backend/internal/modules/pricing/listing_extract_test.go
 /frontend/src/lib/productListing.spec.ts
+/backend/internal/modules/finance/connected_setup_test.go
+/backend/internal/modules/pricing/listing_details_test.go
+/frontend/src/lib/priceRefresh.spec.ts
+/backend/internal/app/connected_workspace_test.go

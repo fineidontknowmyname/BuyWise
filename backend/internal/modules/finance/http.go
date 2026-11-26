@@ -1,6 +1,7 @@
 package finance
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -11,12 +12,18 @@ import (
 )
 
 type Handler struct {
-	service *Service
-	logger  *slog.Logger
+	reservations func(context.Context) (map[string]int64, error)
+	service      *Service
+	logger       *slog.Logger
 }
 
 func NewHandler(service *Service, logger *slog.Logger) *Handler {
 	return &Handler{service: service, logger: logger}
+}
+
+func (h *Handler) WithAccountReservations(load func(context.Context) (map[string]int64, error)) *Handler {
+	h.reservations = load
+	return h
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -38,7 +45,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /budgets/{id}", h.deleteBudget)
 	mux.HandleFunc("GET /budgets", h.budgetReport)
 	if store, ok := h.service.repo.(*Store); ok {
-		foundationHandler{store: store, logger: h.logger, today: h.service.Today}.register(mux)
+		foundationHandler{store: store, logger: h.logger, today: h.service.Today, reservations: h.reservations}.register(mux)
 		h.registerCapture(mux, store)
 		h.registerExpenseWorkspace(mux, store)
 	}

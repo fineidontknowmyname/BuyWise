@@ -37,6 +37,7 @@ func (h offerHandler) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /products/{id}/offers/{offerId}/observations", h.offer(h.record))
 	mux.HandleFunc("POST /products/{id}/offers/{offerId}/import", h.offer(h.importCSV))
 	mux.HandleFunc("POST /products/{id}/offers/{offerId}/refresh", h.offer(h.refresh))
+	mux.HandleFunc("POST /products/{id}/offers/{offerId}/details", h.offer(h.refreshDetails))
 }
 
 func (h offerHandler) createTracked(w http.ResponseWriter, r *http.Request) {
@@ -294,8 +295,14 @@ func (h offerHandler) fail(w http.ResponseWriter, err error) {
 		httpjson.WriteError(w, 400, "invalid_thresholds", "Use positive prices in ideal, good, maximum order.")
 	case errors.Is(err, ErrProviderRateLimited):
 		httpjson.WriteError(w, 429, "provider_rate_limited", "The provider is rate limited. Use manual entry or try later.")
+	case errors.Is(err, errProviderQuota):
+		httpjson.WriteError(w, 429, "provider_quota_exhausted", "The product lookup allowance has been reached. Saved details are still available.")
+	case errors.Is(err, errProviderCredentials):
+		httpjson.WriteError(w, 503, "provider_credentials", "The product provider rejected its API key. Check the server configuration.")
+	case errors.Is(err, errProviderNoPrice):
+		httpjson.WriteError(w, 422, "provider_details_unconfirmed", "The provider could not return matching product details. Your saved product was not changed.")
 	case errors.Is(err, ErrProviderUnavailable):
-		httpjson.WriteError(w, 503, "provider_unavailable", "Automatic price refresh is unavailable. Record a price or import a CSV.")
+		httpjson.WriteError(w, 503, "provider_unavailable", "Product retrieval is unavailable. Check the provider configuration and network, or use manual entry.")
 	case errors.Is(err, errProviderUnsupported):
 		httpjson.WriteError(w, 400, "provider_unsupported", "Live refresh supports direct Amazon India product URLs without a specific seller.")
 	default:

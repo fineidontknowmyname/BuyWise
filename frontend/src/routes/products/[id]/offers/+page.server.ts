@@ -202,7 +202,28 @@ export const actions = {
 			{ method: 'POST' }
 		);
 		return result.ok
-			? { notice: 'Price refresh queued.' }
+			? { refreshRequested: true }
+			: fail(result.status, { error: result.error.message });
+	},
+	details: async ({ params, request, fetch }) => {
+		const form = await request.formData();
+		const id = field(form, 'offerId');
+		if (!idValid(id)) return fail(400, { error: 'Select a retailer offer.' });
+		const result = await apiRequest<Product>(
+			fetch,
+			apiUrl(),
+			path(params.id) + '/offers/' + id + '/details',
+			{
+				method: 'POST',
+				body: JSON.stringify({ confirmed: field(form, 'confirmed') === 'yes' }),
+				signal: AbortSignal.timeout(25000)
+			}
+		);
+		return result.ok
+			? {
+					notice:
+						'Available product details updated. Your saved identity and price targets were preserved.'
+				}
 			: fail(result.status, { error: result.error.message });
 	}
 } satisfies Actions;

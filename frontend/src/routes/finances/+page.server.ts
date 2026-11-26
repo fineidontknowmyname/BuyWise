@@ -13,7 +13,10 @@ type ProfileItem = {
 };
 
 type Foundation = {
+	reservationsAvailable: boolean;
 	profile: {
+		useCategoryBudgets: boolean;
+		budgetCategoryLinks?: Record<string, string>;
 		revision: number;
 		debtStatus: string;
 		items: ProfileItem[];
@@ -23,6 +26,7 @@ type Foundation = {
 		emergencyTargetPaise: number;
 	};
 	capacity: {
+		categoryBudgetPaise: number;
 		version: string;
 		fixedIncomePaise: number;
 		variableIncomePaise: number;
@@ -32,7 +36,19 @@ type Foundation = {
 		bufferPaise: number;
 		safeSavingsPaise: number;
 	};
-	accounts: (Account & { purpose: string })[];
+	accounts: (Account & { purpose: string; reservedPaise: number; availablePaise: number })[];
+	connections: {
+		budgets: { categoryId: string; name: string; amountPaise: number }[];
+		suggestions: {
+			categoryId: string;
+			name: string;
+			kind: string;
+			amountPaise: number;
+			monthsObserved: number;
+		}[];
+		historyFrom: string;
+		historyThrough: string;
+	};
 	emergencySavingsPaise: number;
 	generalSavingsPaise: number;
 	emergencyGapPaise: number;
@@ -77,6 +93,7 @@ export const actions: Actions = {
 		const kinds = form.getAll('kind');
 		const frequencies = form.getAll('frequency');
 		const amounts = form.getAll('amount');
+		const budgetCategories = form.getAll('budgetCategory');
 		const items = names.map((name, i) => ({
 			name: String(name),
 			kind: String(kinds[i] ?? ''),
@@ -95,6 +112,14 @@ export const actions: Actions = {
 		const result = await apiRequest(fetch, apiUrl(), '/financial-profile', {
 			method: 'PUT',
 			body: JSON.stringify({
+				useCategoryBudgets: field(form, 'useCategoryBudgets') === 'yes',
+				budgetCategoryLinks: Object.fromEntries(
+					items.flatMap((item, i) =>
+						budgetCategories[i] && !item.kind.includes('income')
+							? [[item.name.trim(), String(budgetCategories[i])]]
+							: []
+					)
+				),
 				revision: Number(field(form, 'revision')),
 				debtStatus: field(form, 'debtStatus'),
 				items,

@@ -24,16 +24,19 @@ type profileItem struct {
 }
 
 type financialProfile struct {
-	DebtStatus            string        `json:"debtStatus"`
-	Revision              int           `json:"revision"`
-	Items                 []profileItem `json:"items"`
-	VariableIncomePercent int64         `json:"variableIncomePercent"`
-	BufferPercent         int64         `json:"bufferPercent"`
-	BufferMinimumPaise    int64         `json:"bufferMinimumPaise"`
-	EmergencyTargetPaise  int64         `json:"emergencyTargetPaise"`
+	UseCategoryBudgets    bool              `json:"useCategoryBudgets"`
+	BudgetCategoryLinks   map[string]string `json:"budgetCategoryLinks,omitempty"`
+	DebtStatus            string            `json:"debtStatus"`
+	Revision              int               `json:"revision"`
+	Items                 []profileItem     `json:"items"`
+	VariableIncomePercent int64             `json:"variableIncomePercent"`
+	BufferPercent         int64             `json:"bufferPercent"`
+	BufferMinimumPaise    int64             `json:"bufferMinimumPaise"`
+	EmergencyTargetPaise  int64             `json:"emergencyTargetPaise"`
 }
 
 type capacity struct {
+	CategoryBudgetPaise  int64  `json:"categoryBudgetPaise"`
 	Version              string `json:"version"`
 	FixedIncomePaise     int64  `json:"fixedIncomePaise"`
 	VariableIncomePaise  int64  `json:"variableIncomePaise"`
@@ -83,6 +86,25 @@ func (p *financialProfile) validate() bool {
 				return false
 			}
 		default:
+			return false
+		}
+	}
+	if len(p.BudgetCategoryLinks) > len(p.Items) {
+		return false
+	}
+	for name, category := range p.BudgetCategoryLinks {
+		id, err := uuid.Parse(category)
+		if err != nil {
+			return false
+		}
+		p.BudgetCategoryLinks[name] = id.String()
+		matches := 0
+		for _, item := range p.Items {
+			if item.Name == name && item.Kind != "fixed_income" && item.Kind != "variable_income" && item.Kind != "irregular_income" {
+				matches++
+			}
+		}
+		if matches != 1 {
 			return false
 		}
 	}

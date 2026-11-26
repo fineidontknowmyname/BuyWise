@@ -27,5 +27,9 @@ func (s *Store) PlanningSnapshot(ctx context.Context) (int64, bool, []PlanningAc
 		id := account.ID.String()
 		result = append(result, PlanningAccount{id, account.Name, account.BalancePaise, purposes[id]})
 	}
-	return profile.estimate().SafeSavingsPaise, profile.Revision > 0, result, nil
+	estimate, err := s.profileCapacity(ctx, profile)
+	if err != nil {
+		return 0, false, nil, err
+	}
+	return estimate.SafeSavingsPaise, profile.Revision > 0, result, nil
 }

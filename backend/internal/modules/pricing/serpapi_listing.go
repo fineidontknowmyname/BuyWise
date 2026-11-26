@@ -55,6 +55,7 @@ func (p serpProduct) preview(raw string, now time.Time) (listingPreview, error) 
 	}
 	if price, err := p.observation(asin, now); err == nil {
 		preview.CurrentPricePaise = price.ItemPaise
+		preview.Availability = price.Availability
 	} else {
 		preview.Warnings = append(preview.Warnings, "No matching INR item price was returned. Enter a price manually if needed.")
 	}
