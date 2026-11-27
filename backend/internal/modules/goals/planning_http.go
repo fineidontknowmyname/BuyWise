@@ -28,16 +28,18 @@ type fundingAccount struct {
 }
 
 type planView struct {
-	Goal          goalResponse     `json:"goal"`
-	Terms         planTerms        `json:"terms"`
-	CapacityPaise int64            `json:"capacityPaise"`
-	ProfileReady  bool             `json:"profileReady"`
-	FundedPaise   int64            `json:"fundedPaise"`
-	BackingAtRisk bool             `json:"backingAtRisk"`
-	Projection    goalProjection   `json:"projection"`
-	Accounts      []fundingAccount `json:"accounts"`
-	Contributions []fundingEntry   `json:"contributions"`
-	History       []planTerms      `json:"history"`
+	Goal                  goalResponse     `json:"goal"`
+	Terms                 planTerms        `json:"terms"`
+	CapacityPaise         int64            `json:"capacityPaise"`
+	OtherGoalsPaise       int64            `json:"otherGoalsPaise"`
+	AvailableMonthlyPaise int64            `json:"availableMonthlyPaise"`
+	ProfileReady          bool             `json:"profileReady"`
+	FundedPaise           int64            `json:"fundedPaise"`
+	BackingAtRisk         bool             `json:"backingAtRisk"`
+	Projection            goalProjection   `json:"projection"`
+	Accounts              []fundingAccount `json:"accounts"`
+	Contributions         []fundingEntry   `json:"contributions"`
+	History               []planTerms      `json:"history"`
 }
 
 func (p *Planner) Register(mux *http.ServeMux) {
@@ -88,8 +90,8 @@ func (p *Planner) view(r *http.Request, goal Goal, proposed *planTerms) (planVie
 	out := planView{Goal: toResponse(goal), CapacityPaise: total, ProfileReady: configured, Accounts: []fundingAccount{}}
 	for _, account := range accounts {
 		reserved := reservations[account.ID]
-		available := max(0, account.BalancePaise-reserved)
-		if reserved > 0 && (account.BalancePaise < reserved || account.Purpose == "emergency_reserve") {
+		available := max(0, account.BalancePaise-account.ProtectedPaise-reserved)
+		if reserved > 0 && (account.BalancePaise-account.ProtectedPaise < reserved || account.Purpose == "emergency_reserve") {
 			out.BackingAtRisk = true
 		}
 		if account.Purpose == "emergency_reserve" {
@@ -97,14 +99,21 @@ func (p *Planner) view(r *http.Request, goal Goal, proposed *planTerms) (planVie
 		}
 		out.Accounts = append(out.Accounts, fundingAccount{account, reserved, available})
 	}
-	orderCandidates(candidates)
 	available := total
+	for _, candidate := range candidates {
+		if candidate.Goal.ID != goal.ID && candidate.Goal.Status == "active" && candidate.Goal.TargetPricePaise > candidate.FundedPaise {
+			out.OtherGoalsPaise += (candidate.Terms.ApprovedPaise*periodsPerYear(candidate.Terms.Frequency) + 11) / 12
+		}
+	}
+	available = max(0, available-out.OtherGoalsPaise)
+	out.AvailableMonthlyPaise = available
 	today := planningDate(p.now())
 	for _, candidate := range candidates {
 		if candidate.Goal.ID == goal.ID {
 			out.Terms, out.FundedPaise = candidate.Terms, candidate.FundedPaise
 			if proposed != nil {
 				candidate.Terms = *proposed
+				candidate.RegularPaidPaise = 0
 				if candidate.Goal.Status == "paused" {
 					candidate.Goal.Status = "active"
 				}
@@ -112,7 +121,6 @@ func (p *Planner) view(r *http.Request, goal Goal, proposed *planTerms) (planVie
 			out.Projection = project(candidate, available, configured, today)
 			return out, nil
 		}
-		available -= project(candidate, available, configured, today).MonthlyAllocatedPaise
 	}
 	return planView{}, ErrNotFound
 }
@@ -164,9 +172,15 @@ func (p *Planner) save(w http.ResponseWriter, r *http.Request, goal Goal) error 
 	if plan.Terms.Revision != terms.Revision {
 		return errPlanConflict
 	}
-	if terms.Mode == "intelligent" && terms.ApprovedPaise > 0 &&
-		(!plan.ProfileReady || terms.ApprovedPaise > plan.Projection.RecommendedPaise) {
+	if terms.ApprovedPaise > 0 && (!plan.ProfileReady || plan.Projection.MonthlyRequestedPaise > plan.AvailableMonthlyPaise) {
 		return errContributionCapacity
+	}
+	if terms.FirstSavingOn == "" {
+		terms.FirstSavingOn = *projectDate(planningDate(p.now()), 1, terms.Frequency)
+	}
+	if terms.FirstSavingOn < planningDate(p.now()).Format(time.DateOnly) {
+		httpjson.WriteError(w, 400, "past_saving_date", "Choose today or a future first saving date.")
+		return nil
 	}
 	if err := p.store.saveTerms(r.Context(), goal.ID, terms); err != nil {
 		return err
@@ -200,6 +214,9 @@ func (p *Planner) fund(w http.ResponseWriter, r *http.Request, goal Goal) error 
 	if input.AmountPaise > plan.Projection.RemainingPaise {
 		return errFundingConflict
 	}
+	if !plan.ProfileReady {
+		return errContributionCapacity
+	}
 	for _, account := range plan.Accounts {
 		if account.ID == input.AccountID && input.AmountPaise <= account.AvailablePaise {
 			if err := p.store.addFunding(r.Context(), goal.ID, input); err != nil {
@@ -220,6 +237,15 @@ func (p *Planner) lifecycle(w http.ResponseWriter, r *http.Request, goal Goal) e
 		httpjson.WriteError(w, 400, "invalid_status", "Choose active, paused, or cancelled.")
 		return nil
 	}
+	if input.Status == "active" && goal.Status != "active" {
+		plan, err := p.view(r, goal, nil)
+		if err != nil {
+			return err
+		}
+		if plan.Terms.ApprovedPaise > 0 && (!plan.ProfileReady || (plan.Terms.ApprovedPaise*periodsPerYear(plan.Terms.Frequency)+11)/12 > plan.AvailableMonthlyPaise) {
+			return errContributionCapacity
+		}
+	}
 	if err := p.store.setLifecycle(r.Context(), goal.ID, input.Status); err != nil {
 		return err
 	}
@@ -238,7 +264,7 @@ func (p *Planner) fail(w http.ResponseWriter, err error) {
 	case errors.Is(err, errPlanUnavailable):
 		httpjson.WriteError(w, 409, "goal_inactive", "This action is unavailable for the current goal status.")
 	case errors.Is(err, errContributionCapacity):
-		httpjson.WriteError(w, 400, "contribution_capacity", "Enter a contribution within the recommended amount for this goal.")
+		httpjson.WriteError(w, 400, "contribution_capacity", "This contribution exceeds the monthly savings left after your other goals. Review My Money or lower the contribution.")
 	case errors.Is(err, errPlanningAccount):
 		httpjson.WriteError(w, 400, "account_unavailable", "Choose an eligible account with enough unallocated funds.")
 	default:

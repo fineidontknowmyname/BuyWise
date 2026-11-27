@@ -15,6 +15,7 @@ func (p planningFinance) Snapshot(ctx context.Context) (int64, bool, []goals.Pla
 	for _, account := range accounts {
 		result = append(result, goals.PlanningAccount{
 			ID: account.ID, Name: account.Name, BalancePaise: account.BalancePaise, Purpose: account.Purpose,
+			ProtectedPaise: account.ProtectedPaise,
 		})
 	}
 	return capacity, available, result, err

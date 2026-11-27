@@ -28,7 +28,10 @@ FROM finance.accounts a
 LEFT JOIN finance.transactions t ON t.account_id = a.id AND t.voided_at IS NULL AND ($1::date IS NULL OR t.occurred_on <= $1::date)`
 
 type Store struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	reservations func(context.Context) (map[string]int64, error)
+	today        func() time.Time
+	commitments  func(context.Context) (int64, error)
 }
 
 func NewStore(pool *pgxpool.Pool) *Store {
@@ -170,7 +173,21 @@ func (s *Store) UpdateCategory(ctx context.Context, category Category) error {
 }
 
 func (s *Store) DeleteCategory(ctx context.Context, id uuid.UUID) error {
-	_, err := database.Scoped(ctx, s.pool).Exec(ctx, `DELETE FROM finance.categories WHERE id = $1::uuid`, id.String())
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return err
+	}
+	profile, err := s.loadProfile(ctx)
+	if err != nil {
+		return err
+	}
+	if profile.MoneyPlan != nil {
+		for _, rule := range profile.MoneyPlan.Rules {
+			if rule.CategoryID == id.String() && rule.AllowancePaise > 0 {
+				return ErrCategoryInUse
+			}
+		}
+	}
+	_, err = database.Scoped(ctx, s.pool).Exec(ctx, `DELETE FROM finance.categories WHERE id = $1::uuid`, id.String())
 	if err != nil {
 		return fmt.Errorf("delete category: %w", err)
 	}

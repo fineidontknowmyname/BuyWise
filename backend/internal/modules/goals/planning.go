@@ -18,10 +18,11 @@ var errContributionCapacity = errors.New("contribution exceeds allocated safe ca
 var errPlanningAccount = errors.New("account is not available for goal funding")
 
 type PlanningAccount struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	BalancePaise int64  `json:"balancePaise"`
-	Purpose      string `json:"purpose"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	BalancePaise   int64  `json:"balancePaise"`
+	Purpose        string `json:"purpose"`
+	ProtectedPaise int64  `json:"protectedPaise"`
 }
 
 type PlanningFinance interface {
@@ -29,17 +30,25 @@ type PlanningFinance interface {
 }
 
 type planTerms struct {
-	Revision      int    `json:"revision"`
-	Mode          string `json:"mode"`
-	Frequency     string `json:"frequency"`
-	ApprovedPaise int64  `json:"approvedPaise"`
+	Revision      int       `json:"revision"`
+	Mode          string    `json:"mode"`
+	Frequency     string    `json:"frequency"`
+	ApprovedPaise int64     `json:"approvedPaise"`
+	FirstSavingOn string    `json:"firstSavingOn"`
+	SavedAt       time.Time `json:"-"`
 }
 
 func defaultTerms() planTerms {
-	return planTerms{Mode: "intelligent", Frequency: "monthly"}
+	return planTerms{Mode: "simple", Frequency: "monthly"}
 }
 
 func (p planTerms) valid() bool {
+	if p.FirstSavingOn != "" {
+		date, err := time.Parse(time.DateOnly, p.FirstSavingOn)
+		if err != nil || date.Year() < 2000 || date.Year() > 2200 {
+			return false
+		}
+	}
 	return p.Revision >= 0 && p.Revision < 2147483647 && p.ApprovedPaise >= 0 && p.ApprovedPaise <= maxPlanningPaise &&
 		(p.Mode == "simple" || p.Mode == "intelligent") &&
 		(p.Frequency == "weekly" || p.Frequency == "biweekly" || p.Frequency == "monthly")
@@ -57,7 +66,7 @@ func periodsPerYear(frequency string) int64 {
 }
 
 func projectDate(today time.Time, periods int64, frequency string) *string {
-	if periods > 520 || periods < 0 {
+	if periods > periodsPerYear(frequency)*100 || periods < 0 {
 		return nil
 	}
 	date := today
@@ -76,9 +85,10 @@ func projectDate(today time.Time, periods int64, frequency string) *string {
 }
 
 type planCandidate struct {
-	Goal        Goal
-	Terms       planTerms
-	FundedPaise int64
+	Goal             Goal
+	Terms            planTerms
+	FundedPaise      int64
+	RegularPaidPaise int64
 }
 
 type goalProjection struct {
@@ -89,6 +99,8 @@ type goalProjection struct {
 	EstimatedDate         *string `json:"estimatedDate"`
 	State                 string  `json:"state"`
 	OverCapacity          bool    `json:"overCapacity"`
+	NextSavingOn          *string `json:"nextSavingOn"`
+	Overdue               bool    `json:"overdue"`
 }
 
 func rank(priority string) int {
@@ -141,7 +153,7 @@ func project(candidate planCandidate, available int64, hasProfile bool, today ti
 	result.MonthlyRequestedPaise = (terms.ApprovedPaise*periods + 11) / 12
 	result.MonthlyAllocatedPaise = min(available, result.MonthlyRequestedPaise)
 	result.OverCapacity = result.MonthlyRequestedPaise > available
-	if !hasProfile && terms.Mode == "intelligent" {
+	if !hasProfile {
 		result.State = "profile_required"
 		return result
 	}
@@ -151,7 +163,18 @@ func project(candidate planCandidate, available int64, hasProfile bool, today ti
 	}
 	if effective > 0 {
 		count := 1 + (result.RemainingPaise-1)/effective
-		result.EstimatedDate = projectDate(today, count, terms.Frequency)
+		if first, err := time.Parse(time.DateOnly, terms.FirstSavingOn); err == nil {
+			paid := candidate.RegularPaidPaise / effective
+			count = 1 + (result.RemainingPaise+candidate.RegularPaidPaise%effective-1)/effective
+			result.NextSavingOn = projectDate(first, paid, terms.Frequency)
+			result.Overdue = result.NextSavingOn != nil && *result.NextSavingOn < today.Format(time.DateOnly)
+			result.EstimatedDate = projectDate(first, paid+count-1, terms.Frequency)
+			if result.Overdue {
+				result.EstimatedDate = nil
+			}
+		} else {
+			result.EstimatedDate = projectDate(today, count, terms.Frequency)
+		}
 	}
 	result.State = "on_track"
 	switch {
@@ -181,9 +204,16 @@ type fundingInput struct {
 	AccountID      string `json:"accountId"`
 	AmountPaise    int64  `json:"amountPaise"`
 	IdempotencyKey string `json:"idempotencyKey"`
+	Kind           string `json:"kind"`
 }
 
 func (f *fundingInput) valid() bool {
+	if f.Kind == "" {
+		f.Kind = "topup"
+	}
+	if f.Kind != "topup" && f.Kind != "contribution" {
+		return false
+	}
 	id, err := uuid.Parse(f.AccountID)
 	if err != nil || f.AmountPaise <= 0 || f.AmountPaise > maxPlanningPaise || len(f.IdempotencyKey) < 1 || len(f.IdempotencyKey) > 100 {
 		return false

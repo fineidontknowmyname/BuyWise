@@ -10,7 +10,7 @@
 		on_track: 'On track',
 		funded: 'Target earmarked',
 		replan: 'Replanning needed',
-		profile_required: 'Financial profile required',
+		profile_required: 'Review your monthly money plan',
 		target_required: 'Target price required',
 		contribution_required: 'Approve a contribution',
 		paused: 'Paused',
@@ -20,8 +20,9 @@
 	const canEdit = $derived(
 		data.plan.goal.status === 'active' || data.plan.goal.status === 'paused'
 	);
-	const suggested = $derived(data.plan.projection.recommendedPaise);
-	const accounts = $derived(data.plan.accounts.filter((account) => account.availablePaise > 0));
+	const accounts = $derived(
+		data.plan.profileReady ? data.plan.accounts.filter((account) => account.availablePaise > 0) : []
+	);
 
 	const displayDate = (date: string | null | undefined) =>
 		date
@@ -52,9 +53,16 @@
 	{#if data.plan.backingAtRisk}<p class="wb-notice" role="alert">
 			Some reserved savings are no longer backed by account balances. Review your accounts.
 		</p>{/if}
+	{#if data.setupError}<p class="wb-notice" role="alert">
+			Your goal was created. {data.setupError} Complete the remaining setup below.
+		</p>{/if}
+	{#if data.plan.projection.overdue}<p class="wb-notice" role="status">
+			A planned saving is overdue. Record the contribution or choose a new first saving date to
+			update your timeline.
+		</p>{/if}
 	{#if !data.plan.profileReady}<p class="wb-notice">
-			<a href={resolve('/finances')}>Complete financial setup</a> to check this plan against your saving
-			capacity.
+			<a href={resolve('/accounts')}>Set your monthly income and spending</a> to calculate savings for
+			your goals.
 		</p>{/if}
 	<section class="wb-card goal-progress">
 		<div class="wb-metrics">
@@ -114,19 +122,18 @@
 										><option value="monthly">Monthly</option></select
 									></label
 								><label
-									>Planning approach<select name="mode" value={data.plan.terms.mode}
-										><option value="intelligent">Guided by capacity</option><option value="simple"
-											>My own pace</option
-										></select
-									></label
+									>First saving date<input
+										name="firstSavingOn"
+										type="date"
+										min={data.today}
+										value={data.firstSavingOn}
+										required
+									/></label
 								>
 							</div>
 							<p class="wb-muted plan-hint">
-								Suggested: {formatRupees(suggested)} per {data.plan.terms.frequency === 'biweekly'
-									? 'two weeks'
-									: data.plan.terms.frequency === 'weekly'
-										? 'week'
-										: 'month'}. Guided plans stay within shared capacity.
+								{formatRupees(data.plan.availableMonthlyPaise)} per month is left after your other goals.
+								Saving a plan does not move money.
 							</p>
 							<div class="wb-actions">
 								<button class="btn btn-secondary" name="intent" value="preview">Preview</button
@@ -136,21 +143,26 @@
 						{#if form?.preview}<div class="wb-notice" role="status">
 								<strong>{displayDate(form.preview.estimatedDate)}</strong>
 								<p class="wb-muted">
-									Preview · {states[form.preview.state] ?? form.preview.state} · Suggested {formatRupees(
-										form.preview.recommendedPaise
-									)}
+									Preview · {states[form.preview.state] ?? form.preview.state}
 								</p>
 							</div>{/if}
 					</section>
 				{/key}{/if}
 			<section class="wb-card">
 				<div class="wb-card-head">
-					<h2>Reserve existing savings</h2>
+					<h2>Add savings to this goal</h2>
 					<span class="wb-badge">From your accounts</span>
 				</div>
 				{#if data.plan.goal.status === 'active' && data.plan.projection.remainingPaise > 0}
 					{#if accounts.length}<form method="POST" action="?/fund" use:enhance>
 							<input type="hidden" name="fundingKey" value={form?.fundingKey ?? data.fundingKey} />
+							<label class="plan-hint"
+								>Saving type<select name="kind"
+									><option value="contribution">Planned contribution</option><option value="topup"
+										>Existing savings or extra top-up</option
+									></select
+								></label
+							>
 							<div class="wb-fields">
 								<label
 									>Source account<select name="accountId" required
@@ -237,13 +249,31 @@
 		</div>
 		<aside class="wb-stack wb-sticky">
 			<section class="wb-card">
-				<p class="wb-eyebrow">Allocated to this goal</p>
-				<p class="wb-amount">{formatRupees(data.plan.projection.monthlyAllocatedPaise)}</p>
-				<p class="wb-muted">per month, from shared saving capacity</p>
+				<p class="wb-eyebrow">Your monthly savings</p>
+				<p class="wb-amount">
+					{data.plan.profileReady ? formatRupees(data.plan.capacityPaise) : 'Not calculated'}
+				</p>
+				<p class="wb-muted">Income minus fixed and flexible spending</p>
 				<dl class="wb-lines">
 					<div>
-						<dt>Total monthly capacity</dt>
-						<dd>{data.plan.profileReady ? formatRupees(data.plan.capacityPaise) : 'Not set'}</dd>
+						<dt>Other active goals</dt>
+						<dd>{formatRupees(data.plan.otherGoalsPaise)}</dd>
+					</div>
+					<div>
+						<dt>Left for this goal each month</dt>
+						<dd>
+							{data.plan.profileReady
+								? formatRupees(data.plan.availableMonthlyPaise)
+								: 'Set your monthly plan'}
+						</dd>
+					</div>
+					<div>
+						<dt>Free savings available now</dt>
+						<dd>
+							{data.plan.profileReady
+								? formatRupees(accounts.reduce((total, a) => total + a.availablePaise, 0))
+								: 'Review My Money first'}
+						</dd>
 					</div>
 					<div>
 						<dt>Desired date</dt>
@@ -253,7 +283,9 @@
 					</div>
 				</dl>
 				{#if data.plan.projection.overCapacity}<p class="wb-notice" role="alert">
-						This contribution exceeds the capacity assigned to this goal.
+						Your monthly savings cannot cover this contribution alongside your other goals. <a
+							href={resolve('/accounts')}>Review your monthly plan</a
+						> or reduce the contribution.
 					</p>{/if}<a href={resolve('/simulator')}>Explore a different purchase →</a>
 			</section>
 			{#if data.plan.history.length}<details class="wb-fold">

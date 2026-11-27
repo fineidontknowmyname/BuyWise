@@ -1,361 +1,343 @@
 <script lang="ts">
+	import '#lib/styles/workbench.css';
+	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import { formatRupees } from '#lib/money.js';
 	import Modal from '#lib/components/Modal.svelte';
 	import type { PageProps } from './$types';
-	import { Wallet, Plus, ArrowRight, CreditCard, TrendingUp, AlertCircle } from '@lucide/svelte';
-
 	let { data, form }: PageProps = $props();
-
-	let showCreateModal = $state(false);
-
-	const totalNetBalancePaise = $derived(
-		data.accounts.reduce((sum, acc) => sum + acc.balancePaise, 0)
-	);
+	let createOpen = $state(false);
+	const money = $derived(data.money);
 </script>
 
-<svelte:head>
-	<title>Accounts · BuyWise</title>
-</svelte:head>
-
-<div class="accounts-page">
-	<!-- Page Header -->
-	<div class="page-header">
+<svelte:head><title>My Money | BuyWise</title></svelte:head>
+<div class="workbench">
+	<header class="wb-heading">
 		<div>
-			<h1 class="page-headline">Accounts</h1>
-			<p class="page-subheadline">Manage your cash, bank accounts, and savings balances.</p>
+			<p class="wb-eyebrow">My Money</p>
+			<h1>A clear plan for your money.</h1>
+			<p class="wb-muted">Cover your spending. Save the rest. Build your goals.</p>
 		</div>
-		<div class="header-actions">
-			<button type="button" class="btn btn-primary" onclick={() => (showCreateModal = true)}>
-				<Plus size={18} />
-				<span>Add Account</span>
-			</button>
-		</div>
-	</div>
-
-	<!-- Total Liquidity Hero Banner -->
-	{#if data.accounts.length > 0}
-		<div class="net-worth-banner card">
-			<div class="banner-left">
-				<div class="banner-icon">
-					<TrendingUp size={24} />
+		<button class="btn btn-secondary" onclick={() => (createOpen = true)}>Add account</button>
+	</header>
+	{#if data.error || form?.error}<p class="wb-notice" role="alert">
+			{form?.error ?? data.error}
+		</p>{/if}
+	{#if form?.success}<p class="wb-notice" role="status">{form.success}</p>{/if}
+	{#if money}
+		{#if money.reviewRequired}<p class="wb-notice" role="status">
+				A new month has started. <a href="#month-review">Review unused spending</a> before assigning more
+				savings to goals.
+			</p>{/if}
+		<section class="wb-card">
+			<div class="wb-card-head">
+				<h2>Money available now</h2>
+				<span class="wb-badge">Recorded balances</span>
+			</div>
+			<div class="wb-metrics">
+				<div class="wb-metric">
+					<span>Account balance today</span><strong>{formatRupees(money.balancePaise)}</strong>
 				</div>
-				<div>
-					<span class="banner-label">Total Liquid Balance</span>
-					<div class="banner-value tabular-nums">{formatRupees(totalNetBalancePaise)}</div>
+				<div class="wb-metric">
+					<span>Protected for spending</span><strong
+						>{money.configured ? formatRupees(money.protectedPaise) : 'Set your plan below'}</strong
+					>
+				</div>
+				<div class="wb-metric">
+					<span>Free savings for goals</span><strong
+						>{money.reviewRequired
+							? 'Review new month'
+							: money.configured
+								? formatRupees(money.savingsNowPaise)
+								: 'Not calculated'}</strong
+					>
 				</div>
 			</div>
-			<div class="banner-right">
-				<span class="account-stat-pill">
-					{data.accounts.length}
-					{data.accounts.length === 1 ? 'account' : 'accounts'} registered
-				</span>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Error Alert -->
-	{#if data.error}
-		<div class="alert-box alert-error" role="alert">
-			<AlertCircle size={18} />
-			<span>{data.error}</span>
-		</div>
-	{/if}
-
-	<!-- Accounts List / Cards -->
-	{#if data.accounts.length === 0}
-		<div class="card empty-state">
-			<div class="empty-icon-box">
-				<Wallet size={32} />
-			</div>
-			<h3 class="empty-title">No accounts added yet</h3>
-			<p class="empty-text">
-				Add your primary bank account or cash wallet to begin tracking balances and transactions.
+			<p class="wb-muted">
+				{formatRupees(money.reservedPaise)} reserved for goals · {formatRupees(
+					money.emergencyPaise
+				)} in emergency accounts.
 			</p>
-			<button type="button" class="btn btn-primary" onclick={() => (showCreateModal = true)}>
-				<Plus size={18} />
-				<span>Add your first account</span>
-			</button>
-		</div>
-	{:else}
-		<div class="accounts-grid">
-			{#each data.accounts as account (account.id)}
-				<a href={resolve('/accounts/[id]', { id: account.id })} class="account-card">
-					<div class="acc-top">
-						<div class="acc-icon-box">
-							<CreditCard size={20} />
+			{#if money.cashShortfallPaise > 0}<p class="wb-notice" role="status">
+					Your recorded balance is {formatRupees(money.cashShortfallPaise)} short of protected spending
+					and goal savings. Review spending before adding to goals.
+				</p>{/if}
+		</section>
+		<section class="wb-card">
+			<div class="wb-card-head">
+				<h2>Your monthly plan</h2>
+				<span class="wb-badge">Expected income → spending → savings</span>
+			</div>
+			<form
+				method="POST"
+				action="?/plan"
+				use:enhance={() =>
+					async ({ update }) =>
+						update({ reset: false })}
+			>
+				<input type="hidden" name="revision" value={money.revision} />
+				<div class="wb-fields">
+					<label
+						>Recurring income each month (₹)<input
+							name="income"
+							inputmode="decimal"
+							required
+							value={money.incomePaise / 100}
+						/></label
+					>
+				</div>
+				<div class="allocation-grid">
+					{#each [true, false] as fixed (fixed)}
+						<div class="allocation-group">
+							<h3>{fixed ? 'Fixed obligations' : 'Flexible spending'}</h3>
+							<p class="wb-muted">
+								{fixed
+									? 'Rent, bills and other commitments.'
+									: 'Your monthly limits for everyday spending.'}
+							</p>
+							{#each money.categories.filter((c) => c.fixed === fixed && !c.archived) as category (category.categoryId)}
+								<label class="allocation-row"
+									><span>{category.name}</span><input
+										aria-label={`${category.name} monthly amount in rupees`}
+										name={`category:${category.categoryId}`}
+										inputmode="decimal"
+										required
+										value={category.monthlyPaise / 100}
+									/></label
+								>
+							{:else}<p class="wb-muted">No categories yet.</p>{/each}
 						</div>
-						<span class="badge badge-neutral">Active</span>
+					{/each}
+				</div>
+				<details class="plan-preferences">
+					<summary>Reserve & repayment settings</summary>
+					<div class="wb-fields">
+						<label
+							>Emergency reserve target (₹)<input
+								name="emergencyTarget"
+								inputmode="decimal"
+								value={money.emergencyTargetPaise / 100}
+							/></label
+						><label
+							>Debt repayments<select name="debtStatus" value={money.debtStatus}
+								><option value="">Not confirmed</option><option value="current"
+									>No overdue payments</option
+								><option value="overdue">Payments overdue</option></select
+							></label
+						>
 					</div>
-
-					<div class="acc-info">
-						<h3 class="acc-name">{account.name}</h3>
-						<span class="acc-type">Personal Account</span>
+					<p class="wb-muted">
+						Emergency account balances remain protected. These settings help check purchase
+						readiness.
+					</p>
+				</details>
+				<div class="wb-row savings-result">
+					<div>
+						<span class="wb-muted">Planned monthly savings</span>
+						<h2>
+							{money.configured
+								? formatRupees(money.monthlySavingsPaise)
+								: 'Save your plan to calculate'}
+						</h2>
 					</div>
-
-					<div class="acc-balance-group">
-						<span class="balance-label">Current Balance</span>
-						<div class="acc-balance tabular-nums" data-testid="balance">
-							{formatRupees(account.balancePaise)}
+					<button class="btn btn-primary">Save monthly plan</button>
+				</div>
+				{#if money.configured}<p class="wb-muted arithmetic">
+						{formatRupees(money.incomePaise)} income − {formatRupees(money.fixedPaise)} fixed − {formatRupees(
+							money.flexiblePaise
+						)} flexible = {formatRupees(money.monthlySavingsPaise)} savings.
+					</p>{/if}
+			</form>
+			{#if money.configured}<p class="wb-muted">
+					{formatRupees(money.plannedGoalsPaise)} per month committed to goals · {formatRupees(
+						money.unassignedMonthlyPaise
+					)} left for a new goal.
+				</p>{/if}
+			{#if money.monthlyShortfallPaise > 0}<p class="wb-notice" role="alert">
+					Planned spending exceeds income by {formatRupees(money.monthlyShortfallPaise)}. Reduce
+					spending before committing to monthly goal savings.
+				</p>{/if}
+			<div class="wb-row">
+				<a href={resolve('/categories')}>Manage spending categories →</a>
+				<p class="wb-muted">Saving this plan does not record income or change your balance.</p>
+			</div>
+			{#if money.configured}<p class="wb-muted">
+					Lower limits apply next month. Current spending stays protected until you explicitly move
+					unused flexible money below.
+				</p>{/if}
+		</section>
+		{#if money.configured}
+			<section class="wb-card">
+				<div class="wb-card-head">
+					<h2>Spending left · {money.period}</h2>
+					<a href={resolve('/expenses')}>Record an expense →</a>
+				</div>
+				<div class="spending-list">
+					{#each money.categories as category (category.categoryId)}
+						<div class="spending-row">
+							<div>
+								<strong>{category.name}</strong>
+								<p class="wb-muted">
+									{category.fixed ? 'Fixed · protected' : 'Flexible'} · Spent {formatRupees(
+										category.spentPaise
+									)}
+								</p>
+							</div>
+							<strong>{formatRupees(category.remainingPaise)} left</strong>
+							{#if !category.fixed && category.remainingPaise > 0}<details>
+									<summary>Move to savings</summary>
+									<form method="POST" action="?/move" use:enhance class="move-form">
+										<input type="hidden" name="revision" value={money.revision} /><input
+											type="hidden"
+											name="categoryId"
+											value={category.categoryId}
+										/>
+										<label>Amount (₹)<input name="amount" inputmode="decimal" required /></label
+										><label class="confirm"
+											><input type="checkbox" name="confirm" value="yes" required />Reduce this
+											month's spending allowance by this amount.</label
+										><button class="btn btn-secondary">Confirm move</button>
+									</form>
+								</details>{/if}
 						</div>
-					</div>
-
-					<div class="acc-footer">
-						<span class="view-ledger">View Ledger</span>
-						<ArrowRight size={16} class="acc-arrow" />
-					</div>
-				</a>
-			{/each}
-		</div>
-	{/if}
-</div>
-
-<!-- Modal Dialog: Add Account -->
-<Modal open={showCreateModal} title="Add New Account" onclose={() => (showCreateModal = false)}>
-	<form method="POST" action="?/create">
-		<div class="form-group">
-			<label for="account-name" class="label">Account Name</label>
-			<input
-				id="account-name"
-				name="name"
-				required
-				maxlength="200"
-				placeholder="e.g. HDFC Salary, Emergency Fund, Cash Wallet"
-				class="input"
-				value={form?.name ?? ''}
-			/>
-		</div>
-
-		<div class="form-group">
-			<label for="account-opening" class="label">Opening Balance (₹)</label>
-			<input
-				id="account-opening"
-				name="opening"
-				inputmode="decimal"
-				placeholder="0 or 25000"
-				class="input"
-				value={form?.opening ?? ''}
-			/>
-			<span class="text-xs text-muted">Initial balance in rupees. Leave empty for 0.</span>
-		</div>
-
-		{#if form?.error}
-			<p class="form-error" role="alert">{form.error}</p>
+					{/each}
+				</div>
+				<p class="wb-muted">
+					Moving flexible money changes its purpose inside your balance. It does not create income
+					or transfer money between bank accounts.
+				</p>
+			</section>
+			{#if money.period < money.currentPeriod}<section class="wb-card" id="month-review">
+					<h2>Review the new month</h2>
+					<p class="wb-muted">
+						Unpaid fixed obligations carry forward. Choose what happens to unused flexible spending.
+					</p>
+					<form method="POST" action="?/nextMonth" use:enhance>
+						<input type="hidden" name="revision" value={money.revision} />
+						<div class="wb-fields">
+							<label
+								>Unused flexible money<select name="flexibleChoice" required
+									><option value="">Choose an action</option><option value="carry"
+										>Carry into this month's spending</option
+									><option value="save">Move into savings</option></select
+								></label
+							>
+						</div>
+						<button class="btn btn-primary">Confirm and open {money.currentPeriod}</button>
+					</form>
+				</section>{/if}
+			<div class="wb-actions">
+				<a class="btn btn-primary" href={resolve('/goals')}>Plan a purchase →</a><a
+					href={resolve('/simulator')}>Try the reverse EMI calculator</a
+				>
+			</div>
 		{/if}
-
-		<div class="modal-footer">
-			<button type="button" class="btn btn-secondary" onclick={() => (showCreateModal = false)}>
-				Cancel
-			</button>
-			<button type="submit" class="btn btn-primary"> Save Account </button>
+	{/if}
+	<section class="wb-card">
+		<div class="wb-card-head">
+			<h2>Your accounts</h2>
+			<span class="wb-muted">Transactions stay in their original accounts.</span>
 		</div>
+		<ul class="wb-list">
+			{#each data.accounts as account (account.id)}<li>
+					<a class="wb-row" href={resolve('/accounts/[id]', { id: account.id })}
+						><strong>{account.name}</strong><span>{formatRupees(account.balancePaise)} →</span></a
+					>
+				</li>{:else}<li class="wb-muted">
+					Add an account with its current balance to start.
+				</li>{/each}
+		</ul>
+	</section>
+</div>
+<Modal open={createOpen} title="Add account" onclose={() => (createOpen = false)}>
+	<form method="POST" action="?/create" class="workbench">
+		<div class="wb-fields">
+			<label
+				>Account name<input name="name" required maxlength="200" value={form?.name ?? ''} /></label
+			><label
+				>Opening balance (₹)<input
+					name="opening"
+					inputmode="decimal"
+					value={form?.opening ?? ''}
+				/></label
+			>
+		</div>
+		<button class="btn btn-primary">Save account</button>
 	</form>
 </Modal>
 
 <style>
-	.accounts-page {
-		display: flex;
-		flex-direction: column;
+	.allocation-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
 		gap: 24px;
+		margin-block: 24px;
 	}
-
-	.page-header {
-		display: flex;
+	.allocation-group {
+		display: grid;
+		gap: 12px;
+		align-content: start;
+	}
+	.allocation-row {
+		display: grid;
+		grid-template-columns: 1fr 120px;
 		align-items: center;
-		justify-content: space-between;
-		gap: 20px;
+		gap: 12px;
 	}
-
-	.page-headline {
-		font-size: 1.85rem;
-		font-weight: 700;
-		color: var(--foreground);
-		letter-spacing: -0.03em;
+	.allocation-row input {
+		min-width: 0;
+		text-align: right;
 	}
-
-	.page-subheadline {
-		font-size: 0.92rem;
+	.savings-result {
+		border-top: 1px solid var(--border);
+		padding-top: 20px;
+	}
+	.plan-preferences {
+		margin-bottom: 20px;
+	}
+	.plan-preferences summary {
+		cursor: pointer;
+		font-size: 13px;
 		color: var(--foreground-secondary);
-		margin-top: 4px;
+		margin-bottom: 12px;
 	}
-
-	.net-worth-banner {
-		padding: 22px 26px;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		background: linear-gradient(135deg, var(--surface) 0%, var(--surface-secondary) 100%);
+	.arithmetic {
+		margin-top: 12px !important;
 	}
-
-	.banner-left {
-		display: flex;
-		align-items: center;
-		gap: 16px;
+	.spending-row {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 12px;
+		padding: 16px 0;
+		border-bottom: 1px solid var(--border);
 	}
-
-	.banner-icon {
-		width: 48px;
-		height: 48px;
-		border-radius: 14px;
-		background-color: var(--primary-subtle);
-		color: var(--primary);
-		display: flex;
-		align-items: center;
-		justify-content: center;
+	.spending-row details {
+		grid-column: 1/-1;
 	}
-
-	.banner-label {
-		font-size: 0.82rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--foreground-muted);
+	.move-form {
+		display: grid;
+		gap: 12px;
+		max-width: 420px;
+		padding: 16px 0;
 	}
-
-	.banner-value {
-		font-size: 1.85rem;
-		font-weight: 700;
-		color: var(--foreground);
-		letter-spacing: -0.03em;
-		line-height: 1.1;
-		margin-top: 2px;
-	}
-
-	.account-stat-pill {
-		font-size: 0.85rem;
-		font-weight: 500;
-		padding: 6px 14px;
-		border-radius: 999px;
-		background-color: var(--surface);
-		border: 1px solid var(--border);
-		color: var(--foreground-secondary);
-	}
-
-	.alert-box {
-		display: flex;
+	.confirm {
+		display: flex !important;
 		align-items: center;
 		gap: 10px;
-		padding: 12px 16px;
-		border-radius: 12px;
-		font-size: 0.9rem;
 	}
-
-	.alert-error {
-		background-color: var(--danger-surface);
-		color: var(--danger-foreground);
-		border: 1px solid var(--danger);
+	.confirm input {
+		width: auto;
 	}
-
-	.accounts-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-		gap: 20px;
+	.spending-row summary {
+		cursor: pointer;
+		font-size: 13px;
 	}
-
-	.account-card {
-		background-color: var(--surface);
-		border: 1px solid var(--border);
-		border-radius: 16px;
-		padding: 22px;
-		display: flex;
-		flex-direction: column;
-		text-decoration: none;
-		box-shadow: var(--shadow-sm);
-		transition: all 0.2s ease;
-	}
-
-	.account-card:hover {
-		box-shadow: var(--shadow-md);
-		border-color: var(--primary);
-		transform: translateY(-2px);
-	}
-
-	.acc-top {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 16px;
-	}
-
-	.acc-icon-box {
-		width: 42px;
-		height: 42px;
-		border-radius: 12px;
-		background-color: var(--primary-subtle);
-		color: var(--primary);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.acc-name {
-		font-size: 1.15rem;
-		font-weight: 600;
-		color: var(--foreground);
-	}
-
-	.acc-type {
-		font-size: 0.8rem;
-		color: var(--foreground-muted);
-	}
-
-	.acc-balance-group {
-		margin: 20px 0 16px 0;
-	}
-
-	.balance-label {
-		font-size: 0.78rem;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		color: var(--foreground-muted);
-		display: block;
-		margin-bottom: 2px;
-	}
-
-	.acc-balance {
-		font-size: 1.6rem;
-		font-weight: 700;
-		color: var(--foreground);
-		letter-spacing: -0.02em;
-	}
-
-	.acc-footer {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding-top: 14px;
-		border-top: 1px solid var(--border-subtle);
-		margin-top: auto;
-	}
-
-	.view-ledger {
-		font-size: 0.85rem;
-		font-weight: 600;
-		color: var(--primary);
-	}
-
-	:global(.acc-arrow) {
-		color: var(--foreground-muted);
-		transition: transform 0.15s ease;
-	}
-
-	.account-card:hover :global(.acc-arrow) {
-		transform: translateX(3px);
-		color: var(--primary);
-	}
-
 	@media (max-width: 640px) {
-		.page-header {
-			flex-direction: column;
-			align-items: flex-start;
-		}
-		.net-worth-banner {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 16px;
-		}
-		.accounts-grid {
+		.allocation-grid {
 			grid-template-columns: 1fr;
+		}
+		.allocation-row {
+			grid-template-columns: 1fr 105px;
 		}
 	}
 </style>

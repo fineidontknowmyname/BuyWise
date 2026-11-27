@@ -158,6 +158,7 @@ func TestIdentityIsolation(t *testing.T) {
 	}
 	assertJSON(request("GET", "/accounts/"+donor, first, "", 200), "balancePaise", "100000")
 	assertJSON(request("GET", "/accounts/"+firstAccount, first, "", 200), "balancePaise", "0")
+	request("PUT", "/money-plan", first, `{"revision":1,"incomePaise":2900000,"categories":[]}`, 200)
 	purchase := field(request("POST", "/goals", first, `{"name":"Laptop","targetPricePaise":8000000,"savedAmountPaise":2000000,"priority":"high"}`, 201), "id")
 	planPath := "/goals/" + purchase + "/plan"
 	fundingPath := "/goals/" + purchase + "/contributions"
@@ -169,9 +170,10 @@ func TestIdentityIsolation(t *testing.T) {
 	request("PUT", planPath, first, terms, 200)
 	request("PUT", planPath, first, terms, 409)
 	request("PUT", "/goals/"+id, first, `{"name":"First account only","targetPricePaise":9000000,"priority":"medium"}`, 200)
-	request("PUT", "/goals/"+id+"/plan", first, `{"revision":0,"mode":"simple","frequency":"monthly","approvedPaise":1500000}`, 200)
+	request("PUT", "/goals/"+id+"/plan", first, `{"revision":0,"mode":"simple","frequency":"monthly","approvedPaise":1500000}`, 400)
+	request("PUT", "/goals/"+id+"/plan", first, `{"revision":0,"mode":"simple","frequency":"monthly","approvedPaise":900000}`, 200)
 	assertJSON(request("GET", "/goals/"+id+"/plan", first, "", 200), "monthlyAllocatedPaise", "900000")
-	assertJSON(request("POST", planPath+"/preview", first, `{"revision":1,"mode":"simple","frequency":"monthly","approvedPaise":10000}`, 200), "state", `"replan"`)
+	assertJSON(request("POST", planPath+"/preview", first, `{"revision":1,"mode":"simple","frequency":"monthly","approvedPaise":10000}`, 200), "state", `"on_track"`)
 	contribution := `{"accountId":"` + donor + `","amountPaise":80000,"idempotencyKey":"goal-fund-1"}`
 	request("POST", fundingPath, first, strings.Replace(contribution, donor, firstAccount, 1), 400)
 	request("POST", fundingPath, first, contribution, 204)
@@ -233,8 +235,7 @@ func TestIdentityIsolation(t *testing.T) {
 	if got := request("GET", decisionPath, first, "", 200); !strings.Contains(string(got), "debt_unconfirmed") {
 		t.Fatalf("debt qualification missing: %s", got)
 	}
-	confirmedProfile := strings.Replace(profile, `"revision":0`, `"revision":1,"debtStatus":"current"`, 1)
-	request("PUT", "/financial-profile", first, confirmedProfile, 200)
+	request("PUT", "/money-plan", first, `{"revision":2,"incomePaise":2900000,"categories":[],"debtStatus":"current"}`, 200)
 	cash := field(request("POST", "/accounts", first, `{"name":"Purchase cash","openingBalancePaise":1800000}`, 201), "id")
 	request("POST", "/transfers", first, `{"fromAccountId":"`+cash+`","toAccountId":"`+firstAccount+`","amountPaise":1000000,"occurredOn":"`+today+`","idempotencyKey":"decision-reserve"}`, 201)
 	assertJSON(request("GET", decisionPath, first, "", 200), "state", `"SAVE_MORE"`)
@@ -283,7 +284,7 @@ func TestIdentityIsolation(t *testing.T) {
 	observed := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
 	observedOn := observed.In(time.FixedZone("IST", 19800)).Format(time.DateOnly)
 	restarted := pricing.NewRefreshWorker(pool, testOfferProvider(func(_ context.Context, listing pricing.ProviderListing) (pricing.ObservedOfferPrice, error) {
-		if listing.Variant != "16 GB" || listing.Seller != "Example seller" {
+		if listing.Variant != "8 GB" || listing.Seller != "Example seller" {
 			t.Fatalf("unexpected provider listing: %+v", listing)
 		}
 		return pricing.ObservedOfferPrice{ObservedOn: observedOn, ObservedAt: &observed,

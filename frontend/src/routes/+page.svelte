@@ -34,7 +34,7 @@
 		}).format(new Date(data.today + 'T00:00:00Z'))
 	);
 	const capacity = $derived(
-		data.foundation?.profile.revision ? data.foundation.capacity.safeSavingsPaise : null
+		data.foundation?.profile.moneyPlan ? data.foundation.capacity.safeSavingsPaise : null
 	);
 	const metrics = $derived([
 		{
@@ -50,8 +50,8 @@
 			amount: data.weeks ? data.monthlyExpensePaise : null
 		},
 		{
-			label: 'Monthly saving estimate',
-			detail: 'Based on your financial setup',
+			label: 'Planned monthly savings',
+			detail: 'Income minus planned spending',
 			icon: TrendingUp,
 			amount: capacity
 		},
@@ -183,9 +183,9 @@
 				<h2 id="next-step-title">What would you like to save for?</h2>
 				<p>Start with a purchase goal. Add a target and build a saving plan at your own pace.</p>
 			{:else if !data.foundation}
-				<h2 id="next-step-title">Your financial setup is temporarily unavailable</h2>
+				<h2 id="next-step-title">Your monthly money plan is temporarily unavailable</h2>
 				<p>You can still open your goals. Refresh your setup before relying on an estimate.</p>
-			{:else if !data.foundation.profile.revision}
+			{:else if !data.foundation.profile.moneyPlan}
 				<h2 id="next-step-title">Give your plan some financial context</h2>
 				<p>Add income and planned outflows to estimate your monthly saving capacity.</p>
 			{:else}
@@ -204,8 +204,8 @@
 			<button type="button" class="btn btn-accent" onclick={() => (showGoalModal = true)}
 				>Create a goal <Plus size={16} /></button
 			>
-		{:else if data.foundation && !data.foundation.profile.revision}
-			<a class="btn btn-accent" href={resolve('/finances')}
+		{:else if data.foundation && !data.foundation.profile.moneyPlan}
+			<a class="btn btn-accent" href={resolve('/accounts')}
 				>Set up My Money <ArrowRight size={16} /></a
 			>
 		{:else if data.milestone}
@@ -350,7 +350,7 @@
 		<section class="card position">
 			<div class="section-heading">
 				<h2>Financial position</h2>
-				<a href={resolve('/finances')}>Financial setup</a>
+				<a href={resolve('/accounts')}>My Money</a>
 			</div>
 			<dl>
 				<div>
@@ -362,7 +362,7 @@
 				<div>
 					<dt>Monthly committed outflows</dt>
 					<dd>
-						{data.foundation?.profile.revision
+						{data.foundation?.profile.moneyPlan
 							? amountLabel(data.foundation.capacity.committedPaise)
 							: 'Unavailable'}
 					</dd>
@@ -372,7 +372,7 @@
 					<dd>
 						{data.foundation
 							? amountLabel(data.foundation.emergencySavingsPaise)
-							: 'Unavailable'}{#if data.foundation?.profile.revision}
+							: 'Unavailable'}{#if data.foundation?.profile.moneyPlan}
 							/ {amountLabel(data.foundation.profile.emergencyTargetPaise)}{/if}
 					</dd>
 				</div>

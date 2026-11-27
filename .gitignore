@@ -15,6 +15,9 @@ reverse-engineering/
 /deploy/load.js
 
 /backend/migrations/0018_expense_imports.sql
+/backend/migrations/0019_savings_workflow.sql
+/backend/internal/modules/goals/savings_workflow_test.go
+/backend/internal/app/savings_workflow_integration_test.go
 /backend/internal/modules/finance/expense_workspace_test.go
 /backend/internal/app/expense_workspace_integration_test.go
 /frontend/src/lib/expenseImport.spec.ts

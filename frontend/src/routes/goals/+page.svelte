@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { enhance } from '$app/forms';
+	import { untrack } from 'svelte';
+	import GoalSavingsFields from '#lib/components/GoalSavingsFields.svelte';
 	import Modal from '#lib/components/Modal.svelte';
 	import ProductListingPreview from '#lib/components/ProductListingPreview.svelte';
 	import { fillListingField, listingPrice, type ProductListing } from '#lib/productListing.js';
@@ -19,7 +22,7 @@
 	let { data, form }: PageProps = $props();
 
 	let searchQuery = $state('');
-	let showCreateModal = $state(false);
+	let showCreateModal = $state(untrack(() => data.draft.open || !!form?.error));
 	let selectedPriorityFilter = $state('all');
 	let selectedStatus = $state('active');
 	const statuses = [
@@ -34,11 +37,11 @@
 	let formProductUrl = $state('');
 	let formProductName = $state('');
 	let formVariant = $state('');
-	let formTargetPrice = $state('');
+	let formTargetPrice = $state(untrack(() => data.draft.target));
 	let formPriority = $state('medium');
 	let formTargetDate = $state('');
 	let formNotes = $state('');
-	let formProductId = $state('');
+	let formProductId = $state(untrack(() => data.draft.productId));
 
 	// Product extraction state
 	let isExtracting = $state(false);
@@ -352,7 +355,14 @@
 
 <!-- Modal Dialog: Create Goal -->
 <Modal isOpen={showCreateModal} title="New Purchase Goal" onclose={() => (showCreateModal = false)}>
-	<form method="POST" action="?/create" class="modal-form">
+	<form
+		method="POST"
+		action="?/create"
+		class="modal-form"
+		use:enhance={() =>
+			async ({ update }) =>
+				update({ reset: false })}
+	>
 		<!-- Goal Name (Required) -->
 		<div class="form-group">
 			<label for="create-goal-name" class="label">Goal Name *</label>
@@ -519,6 +529,12 @@
 			<p class="form-error" role="alert">{form.error}</p>
 		{/if}
 
+		<GoalSavingsFields
+			target={String(formTargetPrice)}
+			money={data.money}
+			accounts={data.accounts}
+			initial={data.draft}
+		/>
 		<div class="modal-footer">
 			<button type="button" class="btn btn-secondary" onclick={() => (showCreateModal = false)}>
 				Cancel

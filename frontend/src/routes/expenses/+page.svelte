@@ -317,7 +317,7 @@
 					<h3>No recorded expenses in this view</h3>
 					<p>
 						Add an expense, import a file, or adjust the filters. Planned obligations are managed in
-						Financial setup.
+						My Money.
 					</p>
 					<button type="button" class="btn btn-secondary" onclick={() => (manualOpen = true)}
 						>Add your first expense</button
@@ -578,7 +578,7 @@
 	}}
 >
 	<p class="muted">
-		Record money already spent. Planned bills and saving commitments belong in Financial setup.
+		Record money already spent. Planned bills and saving commitments belong in My Money.
 	</p>
 	{#if form?.manualError}<p class="notice error" role="alert">{form.manualError}</p>{/if}
 	{#if data.accounts === null || data.categories === null}<p class="notice">

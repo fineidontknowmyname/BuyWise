@@ -23,6 +23,9 @@ func NewHandler(service *Service, logger *slog.Logger) *Handler {
 
 func (h *Handler) WithAccountReservations(load func(context.Context) (map[string]int64, error)) *Handler {
 	h.reservations = load
+	if store, ok := h.service.repo.(*Store); ok {
+		store.reservations = load
+	}
 	return h
 }
 
@@ -45,10 +48,18 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /budgets/{id}", h.deleteBudget)
 	mux.HandleFunc("GET /budgets", h.budgetReport)
 	if store, ok := h.service.repo.(*Store); ok {
+		store.today = h.service.Today
 		foundationHandler{store: store, logger: h.logger, today: h.service.Today, reservations: h.reservations}.register(mux)
 		h.registerCapture(mux, store)
 		h.registerExpenseWorkspace(mux, store)
 	}
+}
+
+func (h *Handler) WithSavingsCommitments(load func(context.Context) (int64, error)) *Handler {
+	if store, ok := h.service.repo.(*Store); ok {
+		store.commitments = load
+	}
+	return h
 }
 
 type accountResponse struct {

@@ -11,17 +11,17 @@ import {
 } from '@lucide/svelte';
 
 export const moneyLinks = [
-	{ href: resolve('/finances'), label: 'Financial setup' },
-	{ href: resolve('/accounts'), label: 'Accounts' },
+	{ href: resolve('/accounts'), label: 'Money plan & accounts' },
 	{ href: resolve('/expenses'), label: 'Expenses' },
-	{ href: resolve('/budget'), label: 'Budgets & categories' },
+	{ href: resolve('/budget'), label: 'Spending & categories' },
+	{ href: resolve('/finances'), label: 'Transfers & reserves' },
 	{ href: resolve('/reports'), label: 'Reports' }
 ];
 
 export const primaryNavigation = [
 	{ href: resolve('/'), label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
 	{ href: resolve('/goals'), label: 'Purchase goals', shortLabel: 'Goals', icon: Target },
-	{ href: resolve('/finances'), label: 'My Money', shortLabel: 'My Money', icon: Wallet },
+	{ href: resolve('/accounts'), label: 'My Money', shortLabel: 'My Money', icon: Wallet },
 	{
 		href: resolve('/products'),
 		label: 'Products & prices',
@@ -57,5 +57,5 @@ export function isMoneyPath(pathname: string): boolean {
 }
 
 export function isNavigationActive(pathname: string, href: string): boolean {
-	return href === resolve('/finances') ? isMoneyPath(pathname) : isCurrentPath(pathname, href);
+	return href === resolve('/accounts') ? isMoneyPath(pathname) : isCurrentPath(pathname, href);
 }

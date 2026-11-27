@@ -18,6 +18,16 @@
 	let loanDown = $state('0');
 	let fee = $state('0');
 	const draft = $derived(reverseEmiDraft(target, saved, monthly, firstDate));
+	const draftQuery = $derived(
+		new URLSearchParams({
+			create: 'yes',
+			target,
+			saved,
+			monthly,
+			firstDate,
+			productId: selectedProduct
+		}).toString()
+	);
 	const progress = $derived(
 		draft.targetPaise > 0
 			? Math.round(((draft.targetPaise - draft.remainingPaise) / draft.targetPaise) * 100)
@@ -88,6 +98,21 @@
 		<span class="wb-badge">Draft · not saved</span>
 	</header>
 	{#if data.error}<p class="wb-notice" role="status">{data.error}</p>{/if}
+	{#if data.money?.configured}<div class="wb-row">
+			<p class="wb-muted">
+				{formatRupees(data.money.unassignedMonthlyPaise)} per month left for a new goal · {formatRupees(
+					data.money.savingsNowPaise
+				)} free savings now.
+			</p>
+			<button
+				class="btn btn-secondary"
+				onclick={() => (monthly = ((data.money?.unassignedMonthlyPaise ?? 0) / 100).toFixed(2))}
+				>Use my monthly savings</button
+			>
+		</div>{:else}<p class="wb-muted">
+			Explore any amount here. <a href={resolve('/accounts')}>Set your monthly money plan</a> before saving
+			a goal.
+		</p>{/if}
 	<div class="wb-columns calculator-columns">
 		<div class="wb-stack">
 			<section class="wb-card">
@@ -234,7 +259,9 @@
 						</div>
 					</dl>
 					<p class="wb-muted">Assumes a fixed price and regular monthly contributions.</p>
-					<a class="btn btn-primary" href={resolve('/goals')}>Create a purchase goal →</a>{/if}
+					<a class="btn btn-primary" href="{resolve('/goals')}?{draftQuery}"
+						>Create a purchase goal →</a
+					>{/if}
 			</section>
 			<section class="wb-card">
 				<h2>Already have a goal?</h2>

@@ -37,6 +37,7 @@ type AccountEvidence struct {
 }
 
 type FinancialEvidence struct {
+	ReviewRequired       bool              `json:"reviewRequired,omitempty"`
 	ProfileRevision      int               `json:"profileRevision"`
 	DebtStatus           string            `json:"debtStatus"`
 	MonthlyMarginPaise   int64             `json:"monthlyMarginPaise"`

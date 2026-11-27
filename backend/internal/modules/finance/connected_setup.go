@@ -39,6 +39,9 @@ func (p financialProfile) estimateWithBudgets(budgets []Budget) capacity {
 }
 
 func (s *Store) profileCapacity(ctx context.Context, profile financialProfile) (capacity, error) {
+	if profile.MoneyPlan != nil {
+		return s.moneyCapacity(ctx, profile.MoneyPlan)
+	}
 	if !profile.UseCategoryBudgets {
 		return profile.estimate(), nil
 	}

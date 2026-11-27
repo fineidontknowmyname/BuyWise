@@ -173,6 +173,9 @@ func (p purchaseLifecycle) plan(ctx context.Context, goal goals.Goal, input purc
 }
 
 func (out purchaseSummary) withFunding(finances finance.PurchaseFinances, reserves map[string]goals.AccountReservations, historical map[string]int64) (purchaseSummary, error) {
+	if finances.ReviewRequired {
+		return out, lifecycleProblem{"money_review_required", "Review the new month in My Money before recording a purchase."}
+	}
 	var liquid, emergency, paymentFree int64
 	for index, account := range finances.Accounts {
 		if account.ID == out.PaymentAccount {
@@ -196,8 +199,8 @@ func (out purchaseSummary) withFunding(finances finance.PurchaseFinances, reserv
 			continue
 		}
 		reserve := reserves[account.ID]
-		free := account.BalancePaise - reserve.OtherGoals
-		pastFree := historical[account.ID] - reserve.OtherGoals
+		free := account.BalancePaise - account.ProtectedPaise - reserve.OtherGoals
+		pastFree := historical[account.ID] - account.ProtectedPaise - reserve.OtherGoals
 		liquid += free
 		backed := max(0, min(reserve.ForGoal, free))
 		out.BackedPaise += backed

@@ -9,6 +9,7 @@ var marketZone = time.FixedZone("IST", 19800)
 const minimumHistoryDays = 5
 
 var reasons = map[string]struct{ message, action string }{
+	"money_month_review":       {"Your spending plan needs a new-month review.", "Review unused spending in My Money before relying on a purchase recommendation."},
 	"goal_inactive":            {"The goal is paused, completed, or cancelled.", "Resume an eligible goal before reassessing this purchase."},
 	"profile_missing":          {"There is no saved financial profile.", "Save a financial profile with current income, expenses, debt and reserve settings."},
 	"debt_unconfirmed":         {"The repayment status of recorded debt is unconfirmed.", "Confirm repayment status in Finances."},
@@ -92,6 +93,9 @@ func (d *Decision) assessFinances() Axis {
 	if d.CheckoutPaise != nil {
 		after := availablePaise - *d.CheckoutPaise
 		d.AfterPurchasePaise = &after
+	}
+	if f.ReviewRequired {
+		return Axis{State: "UNKNOWN", ReasonCodes: []string{"money_month_review"}}
 	}
 
 	out := Axis{State: "UNKNOWN", ReasonCodes: []string{}}

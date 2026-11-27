@@ -24,6 +24,7 @@ type profileItem struct {
 }
 
 type financialProfile struct {
+	MoneyPlan             *monthlyMoneyPlan `json:"moneyPlan,omitempty"`
 	UseCategoryBudgets    bool              `json:"useCategoryBudgets"`
 	BudgetCategoryLinks   map[string]string `json:"budgetCategoryLinks,omitempty"`
 	DebtStatus            string            `json:"debtStatus"`

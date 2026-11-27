@@ -55,9 +55,9 @@
 		>
 	</section>
 	<section class="card">
-		<h2>Financial assumptions</h2>
-		<p>Manage your variable income confidence, safety buffer and emergency reserve target.</p>
-		<div><a class="btn btn-secondary" href={resolve('/finances')}>Edit financial profile</a></div>
+		<h2>Your monthly money plan</h2>
+		<p>Review recurring income, fixed obligations, flexible spending and savings.</p>
+		<div><a class="btn btn-secondary" href={resolve('/accounts')}>Open My Money</a></div>
 	</section>
 	<section class="card">
 		<h2>Account and privacy</h2>

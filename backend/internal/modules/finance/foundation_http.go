@@ -37,6 +37,10 @@ type designatedAccount struct {
 }
 
 func (h foundationHandler) register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /money-plan", h.getMoneyPlan)
+	mux.HandleFunc("PUT /money-plan", h.putMoneyPlan)
+	mux.HandleFunc("POST /money-plan/move", h.moveMoney)
+	mux.HandleFunc("POST /money-plan/next-month", h.nextMoneyMonth)
 	mux.HandleFunc("GET /financial-profile", h.getProfile)
 	mux.HandleFunc("PUT /financial-profile", h.putProfile)
 	mux.HandleFunc("PUT /accounts/{id}/purpose", h.putPurpose)
@@ -104,8 +108,17 @@ func (h foundationHandler) getProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h foundationHandler) putProfile(w http.ResponseWriter, r *http.Request) {
+	current, loadErr := h.store.loadProfile(r.Context())
+	if loadErr != nil {
+		h.fail(w, loadErr)
+		return
+	}
+	if current.MoneyPlan != nil {
+		httpjson.WriteError(w, 409, "money_plan_active", "Update your monthly plan in My Money.")
+		return
+	}
 	var profile financialProfile
-	if httpjson.Decode(w, r, &profile) != nil || !profile.validate() {
+	if httpjson.Decode(w, r, &profile) != nil || profile.MoneyPlan != nil || !profile.validate() {
 		httpjson.WriteError(w, 400, "invalid_profile", "Check the financial assumptions, amount and frequency of each entry.")
 		return
 	}

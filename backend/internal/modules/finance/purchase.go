@@ -9,6 +9,7 @@ import (
 )
 
 type PurchaseFinances struct {
+	ReviewRequired  bool
 	ProfileRevision int
 	DebtStatus      string
 	EmergencyTarget int64
@@ -66,17 +67,31 @@ func (s *Store) PurchaseFinances(ctx context.Context, now time.Time) (PurchaseFi
 	balances := make([]PlanningAccount, 0, len(accounts))
 	for _, account := range accounts {
 		id := account.ID.String()
-		balances = append(balances, PlanningAccount{id, account.Name, account.BalancePaise, purposes[id]})
+		balances = append(balances, PlanningAccount{ID: id, Name: account.Name, BalancePaise: account.BalancePaise, Purpose: purposes[id]})
 	}
 	estimate, err := s.profileCapacity(ctx, profile)
 	if err != nil {
 		return PurchaseFinances{}, err
 	}
 	debt := profile.DebtStatus
+	if profile.MoneyPlan != nil {
+		_, _, protected, err := s.PlanningSnapshot(ctx)
+		if err != nil {
+			return PurchaseFinances{}, err
+		}
+		for i := range balances {
+			for _, account := range protected {
+				if balances[i].ID == account.ID {
+					balances[i].ProtectedPaise = account.ProtectedPaise
+				}
+			}
+		}
+	}
 	if debt == "" && !slices.ContainsFunc(profile.Items, func(item profileItem) bool { return item.Kind == "debt" }) {
 		debt = "none_declared"
 	}
 	return PurchaseFinances{
+		ReviewRequired:  profile.MoneyPlan != nil && profile.MoneyPlan.Period < monthKey(now),
 		ProfileRevision: profile.Revision, DebtStatus: debt, EmergencyTarget: profile.EmergencyTargetPaise,
 		OperatingBuffer: estimate.BufferPaise,
 		MonthlyMargin:   estimate.FixedIncomePaise + estimate.CountedVariablePaise - estimate.CommittedPaise - estimate.DiscretionaryPaise,

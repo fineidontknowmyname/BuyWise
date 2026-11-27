@@ -25,8 +25,10 @@ func (s *Store) planCandidates(ctx context.Context) ([]planCandidate, error) {
 		positions[goal.ID.String()] = i
 	}
 	db := database.Scoped(ctx, s.pool)
-	rows, err := db.Query(ctx, `SELECT DISTINCT ON (goal_id) goal_id::text, revision, mode, frequency, approved_paise
-        FROM goals.plan_revisions ORDER BY goal_id, revision DESC`)
+	rows, err := db.Query(ctx, `SELECT DISTINCT ON (p.goal_id) p.goal_id::text, p.revision, p.mode, p.frequency, p.approved_paise,
+        COALESCE(p.first_saving_on::text, ''), p.created_at,
+        COALESCE((SELECT SUM(f.amount_paise)::bigint FROM goals.funding f WHERE f.goal_id=p.goal_id AND f.funding_kind='contribution' AND f.created_at>=p.created_at),0)
+        FROM goals.plan_revisions p ORDER BY p.goal_id, p.revision DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -34,18 +36,20 @@ func (s *Store) planCandidates(ctx context.Context) ([]planCandidate, error) {
 	for rows.Next() {
 		var id string
 		var terms planTerms
-		if err := rows.Scan(&id, &terms.Revision, &terms.Mode, &terms.Frequency, &terms.ApprovedPaise); err != nil {
+		var paid int64
+		if err := rows.Scan(&id, &terms.Revision, &terms.Mode, &terms.Frequency, &terms.ApprovedPaise, &terms.FirstSavingOn, &terms.SavedAt, &paid); err != nil {
 			return nil, err
 		}
 		if i, exists := positions[id]; exists {
 			result[i].Terms = terms
+			result[i].RegularPaidPaise = paid
 		}
 	}
 	return result, rows.Err()
 }
 
 func (s *Store) planHistory(ctx context.Context, id uuid.UUID) ([]planTerms, error) {
-	rows, err := database.Scoped(ctx, s.pool).Query(ctx, `SELECT revision, mode, frequency, approved_paise
+	rows, err := database.Scoped(ctx, s.pool).Query(ctx, `SELECT revision, mode, frequency, approved_paise, COALESCE(first_saving_on::text,''), created_at
         FROM goals.plan_revisions WHERE goal_id = $1::uuid ORDER BY revision DESC LIMIT 100`, id.String())
 	if err != nil {
 		return nil, err
@@ -54,7 +58,7 @@ func (s *Store) planHistory(ctx context.Context, id uuid.UUID) ([]planTerms, err
 	result := []planTerms{}
 	for rows.Next() {
 		var record planTerms
-		if err := rows.Scan(&record.Revision, &record.Mode, &record.Frequency, &record.ApprovedPaise); err != nil {
+		if err := rows.Scan(&record.Revision, &record.Mode, &record.Frequency, &record.ApprovedPaise, &record.FirstSavingOn, &record.SavedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, record)
@@ -64,8 +68,8 @@ func (s *Store) planHistory(ctx context.Context, id uuid.UUID) ([]planTerms, err
 
 func (s *Store) saveTerms(ctx context.Context, id uuid.UUID, terms planTerms) error {
 	_, err := database.Scoped(ctx, s.pool).Exec(ctx, `INSERT INTO goals.plan_revisions
-        (goal_id, revision, mode, frequency, approved_paise) VALUES ($1::uuid, $2, $3, $4, $5)`,
-		id.String(), terms.Revision+1, terms.Mode, terms.Frequency, terms.ApprovedPaise)
+        (goal_id, revision, mode, frequency, approved_paise, first_saving_on) VALUES ($1::uuid, $2, $3, $4, $5, NULLIF($6,'')::date)`,
+		id.String(), terms.Revision+1, terms.Mode, terms.Frequency, terms.ApprovedPaise, terms.FirstSavingOn)
 	return err
 }
 
@@ -89,6 +93,20 @@ func (s *Store) fundingHistory(ctx context.Context, id uuid.UUID) ([]fundingEntr
 
 func (s *Store) AccountReservations(ctx context.Context) (map[string]int64, error) {
 	return s.reservations(ctx)
+}
+
+func (s *Store) MonthlyCommitments(ctx context.Context) (int64, error) {
+	candidates, err := s.planCandidates(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, candidate := range candidates {
+		if candidate.Goal.Status == "active" && candidate.Goal.TargetPricePaise > candidate.FundedPaise {
+			total += (candidate.Terms.ApprovedPaise*periodsPerYear(candidate.Terms.Frequency) + 11) / 12
+		}
+	}
+	return total, nil
 }
 
 func (s *Store) reservations(ctx context.Context) (map[string]int64, error) {
@@ -137,26 +155,29 @@ func (s *Store) PurchaseReservations(ctx context.Context, id uuid.UUID) (map[str
 }
 
 func (s *Store) priorFunding(ctx context.Context, id uuid.UUID, input fundingInput) (bool, error) {
-	var goalID, accountID string
+	var goalID, accountID, kind string
 	var amount int64
-	err := database.Scoped(ctx, s.pool).QueryRow(ctx, `SELECT goal_id::text, account_id::text, amount_paise
-        FROM goals.funding WHERE idempotency_key = $1`, input.IdempotencyKey).Scan(&goalID, &accountID, &amount)
+	err := database.Scoped(ctx, s.pool).QueryRow(ctx, `SELECT goal_id::text, account_id::text, amount_paise, funding_kind
+        FROM goals.funding WHERE idempotency_key = $1`, input.IdempotencyKey).Scan(&goalID, &accountID, &amount, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	if goalID != id.String() || accountID != input.AccountID || amount != input.AmountPaise {
+	if goalID != id.String() || accountID != input.AccountID || amount != input.AmountPaise || kind != input.Kind {
 		return false, errFundingConflict
 	}
 	return true, nil
 }
 
 func (s *Store) addFunding(ctx context.Context, id uuid.UUID, input fundingInput) error {
+	if input.Kind == "" {
+		input.Kind = "topup"
+	}
 	_, err := database.Scoped(ctx, s.pool).Exec(ctx, `INSERT INTO goals.funding
-        (goal_id, account_id, amount_paise, idempotency_key) VALUES ($1::uuid, $2::uuid, $3, $4)`,
-		id.String(), input.AccountID, input.AmountPaise, input.IdempotencyKey)
+        (goal_id, account_id, amount_paise, idempotency_key, funding_kind) VALUES ($1::uuid, $2::uuid, $3, $4, $5)`,
+		id.String(), input.AccountID, input.AmountPaise, input.IdempotencyKey, input.Kind)
 	return err
 }
 

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { resolve } from '$app/paths';
 	import { formatRupees } from '#lib/money.js';
 	import { SvelteMap } from 'svelte/reactivity';
 	import Modal from '#lib/components/Modal.svelte';
@@ -399,7 +400,11 @@
 										</button>
 									</div>
 								{:else}
-									<span class="fixed-obligation-label">Fixed obligation</span>
+									<a class="fixed-obligation-label" href={resolve('/accounts')}
+										>{formatRupees(
+											data.money?.categories.find((c) => c.categoryId === cat.id)?.monthlyPaise ?? 0
+										)} · Edit in My Money</a
+									>
 								{/if}
 							</td>
 

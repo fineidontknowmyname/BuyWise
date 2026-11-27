@@ -29,9 +29,10 @@ func (p purchaseInputs) Inputs(ctx context.Context, goal decision.GoalRef, now t
 	for _, account := range finances.Accounts {
 		reserved := reservations[account.ID]
 		accounts = append(accounts, decision.AccountEvidence{ID: account.ID, Purpose: account.Purpose,
-			BalancePaise: account.BalancePaise, GoalReservedPaise: reserved.ForGoal, OtherReservedPaise: reserved.OtherGoals})
+			BalancePaise: account.BalancePaise - account.ProtectedPaise, GoalReservedPaise: reserved.ForGoal, OtherReservedPaise: reserved.OtherGoals})
 	}
 	result := decision.Evidence{Finances: decision.FinancialEvidence{
+		ReviewRequired:  finances.ReviewRequired,
 		ProfileRevision: finances.ProfileRevision, DebtStatus: finances.DebtStatus, MonthlyMarginPaise: finances.MonthlyMargin,
 		EmergencyTargetPaise: finances.EmergencyTarget, OperatingBufferPaise: finances.OperatingBuffer, Accounts: accounts,
 	}, Prices: decision.PriceEvidence{Offers: []decision.OfferEvidence{}}}

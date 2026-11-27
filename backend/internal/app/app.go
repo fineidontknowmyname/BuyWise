@@ -49,6 +49,7 @@ func newDomainHandler(deps Dependencies) http.Handler {
 	financeHandler := finance.NewHandler(financeService, deps.Logger)
 	if goalsOK {
 		financeHandler.WithAccountReservations(goalsStore.AccountReservations)
+		financeHandler.WithSavingsCommitments(goalsStore.MonthlyCommitments)
 	}
 	modules := []httpserver.Module{
 		goals.NewHandler(goalService, deps.Logger),

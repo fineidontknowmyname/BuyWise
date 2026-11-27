@@ -186,7 +186,7 @@ func (p purchaseLifecycle) allocate(w http.ResponseWriter, r *http.Request, goal
 		accounts[account.ID] = account
 		if account.Purpose != "emergency_reserve" {
 			lot := remaining[account.ID]
-			backed[account.ID] = max(0, min(lot, account.BalancePaise-(reserves[account.ID].OtherGoals-lot)))
+			backed[account.ID] = max(0, min(lot, account.BalancePaise-account.ProtectedPaise-(reserves[account.ID].OtherGoals-lot)))
 		}
 	}
 	debited := make(map[string]int64)

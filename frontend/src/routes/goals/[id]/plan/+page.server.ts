@@ -3,13 +3,23 @@ import { error, fail } from '@sveltejs/kit';
 import { apiRequest, type Goal } from '#lib/server/api.js';
 import { apiUrl } from '#lib/server/config.js';
 import { parseRupees } from '#lib/money.js';
+import { todayInIndia } from '#lib/dates.js';
+import { addSavingMonths } from '#lib/reverseEmi.js';
 import type { Actions, PageServerLoad } from './$types';
 
-type Terms = { revision: number; mode: string; frequency: string; approvedPaise: number };
+type Terms = {
+	revision: number;
+	mode: string;
+	frequency: string;
+	approvedPaise: number;
+	firstSavingOn: string;
+};
 type Plan = {
 	goal: Goal & { legacySavedPaise?: number };
 	terms: Terms;
 	capacityPaise: number;
+	otherGoalsPaise: number;
+	availableMonthlyPaise: number;
 	profileReady: boolean;
 	fundedPaise: number;
 	backingAtRisk: boolean;
@@ -21,6 +31,8 @@ type Plan = {
 		estimatedDate: string | null;
 		state: string;
 		overCapacity: boolean;
+		nextSavingOn: string | null;
+		overdue: boolean;
 	};
 	accounts: { id: string; name: string; purpose: string; availablePaise: number }[];
 	contributions: { id: string; accountId: string; amountPaise: number; createdAt: string }[];
@@ -30,10 +42,18 @@ type Plan = {
 const path = (id: string) => '/goals/' + encodeURIComponent(id);
 const field = (form: FormData, name: string) => String(form.get(name) ?? '');
 
-export const load: PageServerLoad = async ({ params, fetch }) => {
+export const load: PageServerLoad = async ({ params, fetch, url }) => {
 	const result = await apiRequest<Plan>(fetch, apiUrl(), path(params.id) + '/plan');
 	if (!result.ok) error(result.status, result.error.message);
-	return { plan: result.data, id: params.id, fundingKey: randomUUID() };
+	return {
+		plan: result.data,
+		id: params.id,
+		fundingKey: randomUUID(),
+		today: todayInIndia(),
+		firstSavingOn:
+			result.data.terms.firstSavingOn || addSavingMonths(todayInIndia(), 1) || todayInIndia(),
+		setupError: url.searchParams.get('setupError')
+	};
 };
 
 export const actions = {
@@ -50,8 +70,9 @@ export const actions = {
 				method: preview ? 'POST' : 'PUT',
 				body: JSON.stringify({
 					revision: Number(field(form, 'revision')),
-					mode: field(form, 'mode'),
+					mode: 'simple',
 					frequency: field(form, 'frequency'),
+					firstSavingOn: field(form, 'firstSavingOn'),
 					approvedPaise
 				})
 			}
@@ -89,7 +110,8 @@ export const actions = {
 			body: JSON.stringify({
 				accountId: field(form, 'accountId'),
 				amountPaise,
-				idempotencyKey: fundingKey
+				idempotencyKey: fundingKey,
+				kind: field(form, 'kind') || 'topup'
 			})
 		});
 		return result.ok

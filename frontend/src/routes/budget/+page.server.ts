@@ -8,6 +8,7 @@ import {
 } from '#lib/server/api.js';
 import { apiUrl } from '#lib/server/config.js';
 import { parseRupees } from '#lib/money.js';
+import type { MoneyPlan } from '#lib/moneyPlan.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ fetch, url }) => {
@@ -15,10 +16,11 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 	const month = url.searchParams.get('month') || '';
 	const budgetPath = month ? `/budgets?month=${encodeURIComponent(month)}` : '/budgets';
 
-	const [categoriesRes, budgetsRes, accountsRes] = await Promise.all([
+	const [categoriesRes, budgetsRes, accountsRes, moneyRes] = await Promise.all([
 		apiRequest<Category[]>(fetch, base, '/categories'),
 		apiRequest<BudgetReport>(fetch, base, budgetPath),
-		apiRequest<Account[]>(fetch, base, '/accounts')
+		apiRequest<Account[]>(fetch, base, '/accounts'),
+		apiRequest<MoneyPlan>(fetch, base, '/money-plan')
 	]);
 
 	const categories = categoriesRes.ok
@@ -59,6 +61,7 @@ export const load: PageServerLoad = async ({ fetch, url }) => {
 	}
 
 	return {
+		money: moneyRes.ok ? moneyRes.data : null,
 		categories,
 		budgetReport,
 		spendingMap: Object.fromEntries(categorySpending),
