@@ -6,7 +6,6 @@ import { marketDate } from '#lib/dates.js';
 import { parseRupees } from '#lib/money.js';
 import { processDocumentUpload } from '#lib/server/documents/service.js';
 import { parseReviewedDetails, reviewedProductPayload } from '#lib/server/documents/productSave.js';
-import { documentIdentityConflicts } from '#lib/documentProduct.js';
 import type { Actions, PageServerLoad } from './$types';
 
 type Offer = {
@@ -136,14 +135,6 @@ export const actions = {
 		}
 		if (!Object.keys(details).length)
 			return fail(400, { error: 'Select at least one product field.' });
-		if (
-			documentIdentityConflicts(
-				{ model: product.data.model, variant: product.data.variant, url: product.data.url },
-				details
-			).length &&
-			form.get('identityConfirmed') !== 'yes'
-		)
-			return fail(409, { error: 'Confirm the product and variant before saving these fields.' });
 		const saved = await apiRequest<Product>(fetch, apiUrl(), path(params.id), {
 			method: 'PUT',
 			body: JSON.stringify(reviewedProductPayload(product.data, details))

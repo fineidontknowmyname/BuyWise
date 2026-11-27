@@ -198,7 +198,7 @@ func TestIdentityIsolation(t *testing.T) {
 	offerA := field(request("POST", offerPath, first, `{"listingUrl":"https://www.amazon.in/dp/EXAMPLE","seller":"Example seller","variant":"16 GB","variantConfirmed":true}`, 201), "id")
 	offerB := field(request("POST", offerPath, first, `{"retailer":"Local shop","variant":"16 GB","variantConfirmed":true}`, 201), "id")
 	request("POST", offerPath, first, `{"listingUrl":"https://amazon.in/dp/EXAMPLE?tag=demo","variant":"16 GB","variantConfirmed":true}`, 409)
-	request("PUT", "/products/"+variant, first, `{"name":"Notebook","brand":"Example","model":"A","variant":"8 GB"}`, 409)
+	request("PUT", "/products/"+variant, first, `{"name":"Notebook","brand":"Example","model":"A","variant":"8 GB"}`, 200)
 	request("GET", offerPath+"/"+offerA+"/history", second, "", 404)
 	request("PUT", "/products/"+variant+"/thresholds", first, `{"idealPaise":300000,"maximumPaise":200000}`, 400)
 	request("PUT", "/products/"+variant+"/thresholds", first, `{"idealPaise":90000,"goodPaise":100000,"maximumPaise":150000}`, 204)

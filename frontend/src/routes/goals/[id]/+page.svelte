@@ -215,7 +215,7 @@
 	}
 
 	function fillProductFromDocument() {
-		if (!docPreview?.productDetails || (documentMismatch && !documentIdentityConfirmed)) return;
+		if (!docPreview?.productDetails) return;
 		if (!documentFromEditor) openEditProductModal();
 		let specifications: Record<string, string>;
 		try {
@@ -1257,13 +1257,13 @@
 						<div>{docPreview.identityMatch.warning}</div>
 					</div>
 				{/if}
-				{#if documentMismatch}
+				{#if documentMismatch && docPreview.validRows.length}
 					{#if documentConflicts.length}<p class="text-sm">
 							Different saved values: {documentConflicts.join(', ')}.
 						</p>{/if}
 					<label class="document-confirm"
-						><input type="checkbox" bind:checked={documentIdentityConfirmed} /> The document differs from
-						the saved product or variant. I have checked that it is the product I want to use.</label
+						><input type="checkbox" bind:checked={documentIdentityConfirmed} /> Before importing price
+						history, I checked that these records belong to the intended product and variant.</label
 					>
 				{/if}
 				{#each docPreview.warnings ?? [] as warning (warning)}<p class="text-sm text-muted">
@@ -1288,8 +1288,7 @@
 							type="button"
 							class="btn btn-primary"
 							onclick={fillProductFromDocument}
-							disabled={!selectedDocumentFields.length ||
-								(documentMismatch && !documentIdentityConfirmed)}>Fill product form</button
+							disabled={!selectedDocumentFields.length}>Fill product form</button
 						>
 					</section>
 				{/if}

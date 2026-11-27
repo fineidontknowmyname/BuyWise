@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { deserialize } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
-	import { documentProductLabels, documentIdentityConflicts } from '#lib/documentProduct.js';
+	import { documentProductLabels } from '#lib/documentProduct.js';
 	import { parseRupees } from '#lib/money.js';
 	import type { Product } from '#lib/server/api.js';
 	import type {
@@ -15,22 +15,8 @@
 	let busy = $state(false);
 	let message = $state('');
 	let failure = $state('');
-	let confirmed = $state(false);
 	const fields = $derived(
 		Object.keys(preview?.productDetails ?? {}) as Array<keyof DocumentProductDetails>
-	);
-	const conflicts = $derived(
-		documentIdentityConflicts(
-			{ model: product.model, variant: product.variant, url: product.url },
-			{
-				model: selected.includes('model') ? draft.model : undefined,
-				variant: selected.includes('variant') ? draft.variant : undefined,
-				url: selected.includes('url') ? draft.url : undefined
-			}
-		)
-	);
-	const needsConfirmation = $derived(
-		conflicts.length > 0 || preview?.identityMatch?.matches === false
 	);
 
 	async function upload(event: SubmitEvent) {
@@ -40,7 +26,6 @@
 		failure = '';
 		message = '';
 		preview = null;
-		confirmed = false;
 		try {
 			const response = await fetch('?/uploadDocument', {
 				method: 'POST',
@@ -88,7 +73,6 @@
 			}
 			const body = new FormData();
 			body.set('details', JSON.stringify(details));
-			body.set('identityConfirmed', confirmed ? 'yes' : 'no');
 			const response = await fetch('?/saveDocumentDetails', {
 				method: 'POST',
 				headers: { Accept: 'application/json' },
@@ -117,6 +101,7 @@
 			method="POST"
 			action="?/uploadDocument"
 			enctype="multipart/form-data"
+			aria-label={'Import product information for ' + product.name}
 			onsubmit={upload}
 			class="wb-stack"
 		>
@@ -178,20 +163,12 @@
 						</label>
 					</div>
 				{/each}
-				{#if needsConfirmation}<p class="wb-muted">
-						Check the product identity{conflicts.length ? ': ' + conflicts.join(', ') : ''}.
-						Existing tracked models and variants remain protected.
-					</p>
-					<label class="wb-check"
-						><input type="checkbox" bind:checked={confirmed} />I checked that these details belong
-						to this product.</label
-					>{/if}
+
 				<button
 					type="button"
 					class="btn btn-primary"
 					onclick={save}
-					disabled={busy || !selected.length || (needsConfirmation && !confirmed)}
-					>Save selected details</button
+					disabled={busy || !selected.length}>Save selected details</button
 				>
 			</div>
 		{/if}

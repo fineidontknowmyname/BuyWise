@@ -207,10 +207,6 @@ func (h *Handler) updateProduct(w http.ResponseWriter, r *http.Request) {
 		Warnings:           req.Warnings,
 	}
 	updated, err := h.service.UpdateProduct(r.Context(), p)
-	if errors.Is(err, errVariantMismatch) {
-		httpjson.WriteError(w, http.StatusConflict, "variant_mismatch", "Create a separate product for a different variant while offers are tracked.")
-		return
-	}
 	if errors.Is(err, ErrProductNotFound) {
 		httpjson.WriteError(w, http.StatusNotFound, "product_not_found", "Product not found.")
 		return
