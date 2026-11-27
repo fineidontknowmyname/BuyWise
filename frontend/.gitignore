@@ -1,10 +1,13 @@
 node_modules
+/.verification/
 .output
 .vercel
 .netlify
 .wrangler
 /.svelte-kit
 /build
+/mobile/dist/
+/mobile/android/app/src/main/assets/public/
 .DS_Store
 Thumbs.db
 .env

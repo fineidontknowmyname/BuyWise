@@ -28,7 +28,7 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	if _, err := migrate.Apply(ctx, pool, os.DirFS("../../../migrations")); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if _, err := pool.Exec(ctx, "TRUNCATE goals.goals"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE goals.goals CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	return pool
@@ -51,6 +51,7 @@ func TestStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
+	first.Priority, first.Status = "medium", "active"
 	if got != first {
 		t.Fatalf("got %+v, want %+v", got, first)
 	}

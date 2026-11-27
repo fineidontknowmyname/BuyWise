@@ -1,0 +1,6 @@
+{
+	"appId": "com.buywise.app",
+	"appName": "BuyWise",
+	"webDir": "dist",
+	"android": { "allowMixedContent": false }
+}

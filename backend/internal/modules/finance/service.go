@@ -16,6 +16,9 @@ type Repository interface {
 	CreateCategory(ctx context.Context, category Category) error
 	ListCategories(ctx context.Context) ([]Category, error)
 	GetCategory(ctx context.Context, id uuid.UUID) (Category, error)
+	UpdateCategory(ctx context.Context, category Category) error
+	DeleteCategory(ctx context.Context, id uuid.UUID) error
+	CategoryTransactionCount(ctx context.Context, id uuid.UUID) (int64, error)
 	CreateTransaction(ctx context.Context, tx Transaction) (stored Transaction, created bool, err error)
 	ListTransactions(ctx context.Context, accountID uuid.UUID) ([]Transaction, error)
 	VoidTransaction(ctx context.Context, id uuid.UUID, at time.Time, reason string) (Transaction, error)
@@ -111,6 +114,54 @@ func (s *Service) CreateCategory(ctx context.Context, name string, kind Kind, co
 
 func (s *Service) ListCategories(ctx context.Context) ([]Category, error) {
 	return s.repo.ListCategories(ctx)
+}
+
+func (s *Service) GetCategory(ctx context.Context, id uuid.UUID) (Category, error) {
+	return s.repo.GetCategory(ctx, id)
+}
+
+func (s *Service) UpdateCategory(ctx context.Context, id uuid.UUID, name string, kind Kind, committed bool, archived bool) (Category, error) {
+	_, err := s.repo.GetCategory(ctx, id)
+	if err != nil {
+		return Category{}, err
+	}
+	normalized, err := normalizeName(name)
+	if err != nil {
+		return Category{}, err
+	}
+	if !kind.Valid() {
+		return Category{}, ErrInvalidKind
+	}
+	if committed && kind != Expense {
+		return Category{}, ErrCommittedIncome
+	}
+	updated := Category{
+		ID:        id,
+		Name:      normalized,
+		Kind:      kind,
+		Committed: committed,
+		Archived:  archived,
+	}
+	if err := s.repo.UpdateCategory(ctx, updated); err != nil {
+		return Category{}, err
+	}
+	return updated, nil
+}
+
+func (s *Service) DeleteCategory(ctx context.Context, id uuid.UUID) error {
+	count, err := s.repo.CategoryTransactionCount(ctx, id)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrCategoryInUse
+	}
+	_ = s.repo.DeleteBudget(ctx, id)
+	return s.repo.DeleteCategory(ctx, id)
+}
+
+func (s *Service) CategoryTransactionCount(ctx context.Context, id uuid.UUID) (int64, error) {
+	return s.repo.CategoryTransactionCount(ctx, id)
 }
 
 func (s *Service) CreateTransaction(ctx context.Context, in NewTransaction) (tx Transaction, created bool, err error) {

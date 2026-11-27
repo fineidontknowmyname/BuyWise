@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"selfemi/internal/platform/database"
 	"time"
 	"uuid"
 
@@ -15,17 +16,22 @@ import (
 const uniqueViolation = "23505"
 
 const transactionColumns = `id::text, account_id::text, category_id::text, kind, amount_paise,
-	occurred_on::text, note, idempotency_key, voided_at, void_reason, created_at`
+	occurred_on::text, note, idempotency_key, voided_at, void_reason, created_at, purchase_managed`
 
 const accountSummarySelect = `SELECT a.id::text, a.name, a.opening_balance_paise, a.created_at,
 	a.opening_balance_paise + COALESCE(SUM(
 		CASE t.kind WHEN 'income' THEN t.amount_paise WHEN 'expense' THEN -t.amount_paise END
 	), 0)::bigint
+    + COALESCE((SELECT SUM(amount_paise) FROM finance.transfers WHERE to_account_id = a.id AND ($1::date IS NULL OR occurred_on <= $1::date)), 0)::bigint
+    - COALESCE((SELECT SUM(amount_paise) FROM finance.transfers WHERE from_account_id = a.id AND ($1::date IS NULL OR occurred_on <= $1::date)), 0)::bigint
 FROM finance.accounts a
-LEFT JOIN finance.transactions t ON t.account_id = a.id AND t.voided_at IS NULL`
+LEFT JOIN finance.transactions t ON t.account_id = a.id AND t.voided_at IS NULL AND ($1::date IS NULL OR t.occurred_on <= $1::date)`
 
 type Store struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	reservations func(context.Context) (map[string]int64, error)
+	today        func() time.Time
+	commitments  func(context.Context) (int64, error)
 }
 
 func NewStore(pool *pgxpool.Pool) *Store {
@@ -38,7 +44,10 @@ func isUniqueViolation(err error) bool {
 }
 
 func (s *Store) CreateAccount(ctx context.Context, account Account) error {
-	_, err := s.pool.Exec(ctx,
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return err
+	}
+	_, err := database.Scoped(ctx, s.pool).Exec(ctx,
 		`INSERT INTO finance.accounts (id, name, opening_balance_paise, created_at) VALUES ($1::uuid, $2, $3, $4)`,
 		account.ID.String(), account.Name, account.OpeningBalancePaise, account.CreatedAt)
 	if isUniqueViolation(err) {
@@ -51,7 +60,11 @@ func (s *Store) CreateAccount(ctx context.Context, account Account) error {
 }
 
 func (s *Store) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
-	rows, err := s.pool.Query(ctx, accountSummarySelect+` GROUP BY a.id ORDER BY a.id`)
+	return s.accountSummaries(ctx, nil)
+}
+
+func (s *Store) accountSummaries(ctx context.Context, day *string) ([]AccountSummary, error) {
+	rows, err := database.Scoped(ctx, s.pool).Query(ctx, accountSummarySelect+` GROUP BY a.id ORDER BY a.id`, day)
 	if err != nil {
 		return nil, fmt.Errorf("list accounts: %w", err)
 	}
@@ -72,7 +85,7 @@ func (s *Store) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
 }
 
 func (s *Store) GetAccount(ctx context.Context, id uuid.UUID) (AccountSummary, error) {
-	row := s.pool.QueryRow(ctx, accountSummarySelect+` WHERE a.id = $1::uuid GROUP BY a.id`, id.String())
+	row := database.Scoped(ctx, s.pool).QueryRow(ctx, accountSummarySelect+` WHERE a.id = $2::uuid GROUP BY a.id`, nil, id.String())
 	summary, err := scanAccountSummary(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AccountSummary{}, ErrAccountNotFound
@@ -99,9 +112,9 @@ func scanAccountSummary(row pgx.Row) (AccountSummary, error) {
 }
 
 func (s *Store) CreateCategory(ctx context.Context, category Category) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO finance.categories (id, name, kind, committed) VALUES ($1::uuid, $2, $3, $4)`,
-		category.ID.String(), category.Name, string(category.Kind), category.Committed)
+	_, err := database.Scoped(ctx, s.pool).Exec(ctx,
+		`INSERT INTO finance.categories (id, name, kind, committed, archived) VALUES ($1::uuid, $2, $3, $4, $5)`,
+		category.ID.String(), category.Name, string(category.Kind), category.Committed, category.Archived)
 	if isUniqueViolation(err) {
 		return ErrDuplicateName
 	}
@@ -112,8 +125,8 @@ func (s *Store) CreateCategory(ctx context.Context, category Category) error {
 }
 
 func (s *Store) ListCategories(ctx context.Context) ([]Category, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT id::text, name, kind, committed FROM finance.categories ORDER BY kind DESC, id`)
+	rows, err := database.Scoped(ctx, s.pool).Query(ctx,
+		`SELECT id::text, name, kind, committed, COALESCE(archived, false) FROM finance.categories ORDER BY kind DESC, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list categories: %w", err)
 	}
@@ -134,8 +147,8 @@ func (s *Store) ListCategories(ctx context.Context) ([]Category, error) {
 }
 
 func (s *Store) GetCategory(ctx context.Context, id uuid.UUID) (Category, error) {
-	row := s.pool.QueryRow(ctx,
-		`SELECT id::text, name, kind, committed FROM finance.categories WHERE id = $1::uuid`, id.String())
+	row := database.Scoped(ctx, s.pool).QueryRow(ctx,
+		`SELECT id::text, name, kind, committed, COALESCE(archived, false) FROM finance.categories WHERE id = $1::uuid`, id.String())
 	category, err := scanCategory(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Category{}, ErrCategoryNotFound
@@ -146,10 +159,65 @@ func (s *Store) GetCategory(ctx context.Context, id uuid.UUID) (Category, error)
 	return category, nil
 }
 
+func (s *Store) UpdateCategory(ctx context.Context, category Category) error {
+	_, err := database.Scoped(ctx, s.pool).Exec(ctx,
+		`UPDATE finance.categories SET name = $2, kind = $3, committed = $4, archived = $5 WHERE id = $1::uuid`,
+		category.ID.String(), category.Name, string(category.Kind), category.Committed, category.Archived)
+	if isUniqueViolation(err) {
+		return ErrDuplicateName
+	}
+	if err != nil {
+		return fmt.Errorf("update category: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) DeleteCategory(ctx context.Context, id uuid.UUID) error {
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return err
+	}
+	profile, err := s.loadProfile(ctx)
+	if err != nil {
+		return err
+	}
+	if profile.MoneyPlan != nil {
+		for _, rule := range profile.MoneyPlan.Rules {
+			if rule.CategoryID == id.String() && rule.AllowancePaise > 0 {
+				return ErrCategoryInUse
+			}
+		}
+	}
+	_, err = database.Scoped(ctx, s.pool).Exec(ctx, `DELETE FROM finance.categories WHERE id = $1::uuid`, id.String())
+	if err != nil {
+		return fmt.Errorf("delete category: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) CategoryTransactionCount(ctx context.Context, id uuid.UUID) (int64, error) {
+	var count int64
+	err := database.Scoped(ctx, s.pool).QueryRow(ctx, `SELECT COUNT(*) FROM finance.transactions WHERE category_id = $1::uuid`, id.String()).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count category transactions: %w", err)
+	}
+	return count, nil
+}
+
+func (s *Store) DeleteBudget(ctx context.Context, categoryID uuid.UUID) error {
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return err
+	}
+	_, err := database.Scoped(ctx, s.pool).Exec(ctx, `DELETE FROM finance.budgets WHERE category_id = $1::uuid`, categoryID.String())
+	if err != nil {
+		return fmt.Errorf("delete budget: %w", err)
+	}
+	return nil
+}
+
 func scanCategory(row pgx.Row) (Category, error) {
 	var category Category
 	var id, kind string
-	if err := row.Scan(&id, &category.Name, &kind, &category.Committed); err != nil {
+	if err := row.Scan(&id, &category.Name, &kind, &category.Committed, &category.Archived); err != nil {
 		return Category{}, err
 	}
 	parsed, err := uuid.Parse(id)
@@ -162,20 +230,23 @@ func scanCategory(row pgx.Row) (Category, error) {
 }
 
 func (s *Store) CreateTransaction(ctx context.Context, tx Transaction) (Transaction, bool, error) {
-	tag, err := s.pool.Exec(ctx,
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return Transaction{}, false, err
+	}
+	tag, err := database.Scoped(ctx, s.pool).Exec(ctx,
 		`INSERT INTO finance.transactions
-			(id, account_id, category_id, kind, amount_paise, occurred_on, note, idempotency_key, created_at)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::date, $7, $8, $9)
-		ON CONFLICT (idempotency_key) DO NOTHING`,
+			(id, account_id, category_id, kind, amount_paise, occurred_on, note, idempotency_key, created_at, purchase_managed)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::date, $7, $8, $9, $10)
+		ON CONFLICT (user_id, idempotency_key) DO NOTHING`,
 		tx.ID.String(), tx.AccountID.String(), tx.CategoryID.String(), string(tx.Kind), tx.AmountPaise,
-		tx.OccurredOn.Format(DateLayout), tx.Note, tx.IdempotencyKey, tx.CreatedAt)
+		tx.OccurredOn.Format(DateLayout), tx.Note, tx.IdempotencyKey, tx.CreatedAt, tx.PurchaseManaged)
 	if err != nil {
 		return Transaction{}, false, fmt.Errorf("create transaction: %w", err)
 	}
 	if tag.RowsAffected() == 1 {
 		return tx, true, nil
 	}
-	row := s.pool.QueryRow(ctx,
+	row := database.Scoped(ctx, s.pool).QueryRow(ctx,
 		`SELECT `+transactionColumns+` FROM finance.transactions WHERE idempotency_key = $1`, tx.IdempotencyKey)
 	existing, err := scanTransaction(row)
 	if err != nil {
@@ -185,7 +256,7 @@ func (s *Store) CreateTransaction(ctx context.Context, tx Transaction) (Transact
 }
 
 func (s *Store) ListTransactions(ctx context.Context, accountID uuid.UUID) ([]Transaction, error) {
-	rows, err := s.pool.Query(ctx,
+	rows, err := database.Scoped(ctx, s.pool).Query(ctx,
 		`SELECT `+transactionColumns+` FROM finance.transactions
 		WHERE account_id = $1::uuid ORDER BY occurred_on DESC, id DESC`, accountID.String())
 	if err != nil {
@@ -208,9 +279,12 @@ func (s *Store) ListTransactions(ctx context.Context, accountID uuid.UUID) ([]Tr
 }
 
 func (s *Store) VoidTransaction(ctx context.Context, id uuid.UUID, at time.Time, reason string) (Transaction, error) {
-	row := s.pool.QueryRow(ctx,
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return Transaction{}, err
+	}
+	row := database.Scoped(ctx, s.pool).QueryRow(ctx,
 		`UPDATE finance.transactions SET voided_at = $2, void_reason = $3
-		WHERE id = $1::uuid AND voided_at IS NULL RETURNING `+transactionColumns,
+		WHERE id = $1::uuid AND voided_at IS NULL AND NOT purchase_managed RETURNING `+transactionColumns,
 		id.String(), at, reason)
 	tx, err := scanTransaction(row)
 	if err == nil {
@@ -219,22 +293,26 @@ func (s *Store) VoidTransaction(ctx context.Context, id uuid.UUID, at time.Time,
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Transaction{}, fmt.Errorf("void transaction: %w", err)
 	}
-	var exists bool
-	if err := s.pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM finance.transactions WHERE id = $1::uuid)`, id.String()).Scan(&exists); err != nil {
+	var managed bool
+	err = database.Scoped(ctx, s.pool).QueryRow(ctx,
+		`SELECT purchase_managed FROM finance.transactions WHERE id = $1::uuid`, id.String()).Scan(&managed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Transaction{}, ErrTransactionNotFound
+	}
+	if err != nil {
 		return Transaction{}, fmt.Errorf("void transaction: %w", err)
 	}
-	if exists {
-		return Transaction{}, ErrAlreadyVoided
+	if managed {
+		return Transaction{}, ErrPurchaseManaged
 	}
-	return Transaction{}, ErrTransactionNotFound
+	return Transaction{}, ErrAlreadyVoided
 }
 
 func scanTransaction(row pgx.Row) (Transaction, error) {
 	var tx Transaction
 	var id, accountID, categoryID, kind, occurredOn string
 	if err := row.Scan(&id, &accountID, &categoryID, &kind, &tx.AmountPaise, &occurredOn,
-		&tx.Note, &tx.IdempotencyKey, &tx.VoidedAt, &tx.VoidReason, &tx.CreatedAt); err != nil {
+		&tx.Note, &tx.IdempotencyKey, &tx.VoidedAt, &tx.VoidReason, &tx.CreatedAt, &tx.PurchaseManaged); err != nil {
 		return Transaction{}, err
 	}
 	var err error
@@ -260,7 +338,10 @@ func scanTransaction(row pgx.Row) (Transaction, error) {
 }
 
 func (s *Store) UpsertBudget(ctx context.Context, budget Budget) error {
-	_, err := s.pool.Exec(ctx,
+	if err := database.LockPlanning(ctx, s.pool); err != nil {
+		return err
+	}
+	_, err := database.Scoped(ctx, s.pool).Exec(ctx,
 		`INSERT INTO finance.budgets (category_id, limit_paise, updated_at) VALUES ($1::uuid, $2, $3)
 		ON CONFLICT (category_id) DO UPDATE SET limit_paise = EXCLUDED.limit_paise, updated_at = EXCLUDED.updated_at`,
 		budget.CategoryID.String(), budget.LimitPaise, budget.UpdatedAt)
@@ -271,7 +352,7 @@ func (s *Store) UpsertBudget(ctx context.Context, budget Budget) error {
 }
 
 func (s *Store) ListBudgets(ctx context.Context) ([]Budget, error) {
-	rows, err := s.pool.Query(ctx, `SELECT category_id::text, limit_paise, updated_at FROM finance.budgets ORDER BY category_id`)
+	rows, err := database.Scoped(ctx, s.pool).Query(ctx, `SELECT category_id::text, limit_paise, updated_at FROM finance.budgets ORDER BY category_id`)
 	if err != nil {
 		return nil, fmt.Errorf("list budgets: %w", err)
 	}
@@ -299,7 +380,7 @@ func (s *Store) ListBudgets(ctx context.Context) ([]Budget, error) {
 }
 
 func (s *Store) SpentByCategory(ctx context.Context, fromInclusive, toExclusive time.Time) (map[uuid.UUID]int64, error) {
-	rows, err := s.pool.Query(ctx,
+	rows, err := database.Scoped(ctx, s.pool).Query(ctx,
 		`SELECT category_id::text, SUM(amount_paise)::bigint FROM finance.transactions
 		WHERE kind = 'expense' AND voided_at IS NULL AND occurred_on >= $1::date AND occurred_on < $2::date
 		GROUP BY category_id`,
