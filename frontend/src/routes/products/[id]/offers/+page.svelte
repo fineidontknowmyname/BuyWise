@@ -4,6 +4,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import PriceTimelineChart from '#lib/components/PriceTimelineChart.svelte';
+	import ProductDocumentImport from '#lib/components/ProductDocumentImport.svelte';
 	import { priceRefreshStatus } from '#lib/priceRefresh.js';
 	import { formatRupees } from '#lib/money.js';
 	import type { PriceObservation } from '#lib/server/api.js';
@@ -105,16 +106,22 @@
 						onerror={(e) => ((e.currentTarget as HTMLImageElement).hidden = true)}
 					/>{/if}
 				<div class="price-copy">
-					<p class="wb-eyebrow">Latest item price</p>
+					<p class="wb-eyebrow">{latestPrice ? 'Latest item price' : 'Saved item price'}</p>
 					<p class="wb-amount">
-						{latestPrice ? formatRupees(latestPrice.itemPaise) : 'Not available'}
+						{latestPrice
+							? formatRupees(latestPrice.itemPaise)
+							: data.product.currentPricePaise > 0
+								? formatRupees(data.product.currentPricePaise)
+								: 'Not available'}
 					</p>
 					<p class="wb-muted">
 						{latestPrice
 							? (data.history?.offer.retailer ?? '') +
 								' · ' +
 								(latestPrice.observedAt ? stamp(latestPrice.observedAt) : latestPrice.observedOn)
-							: 'Check the retailer or add a price below.'}
+							: data.product.currentPricePaise > 0
+								? 'Saved product details · not a live quote'
+								: 'Check the retailer or import a product document.'}
 					</p>
 					{#if latestPrice}<span class="wb-badge"
 							>{data.history?.freshness === 'stale'
@@ -392,28 +399,62 @@
 						><button class="btn btn-secondary">Link goal</button>
 					</form>
 				</section>{/if}
-			{#if data.product.description || Object.keys(data.product.specifications ?? {}).length || data.product.warnings?.length}<details
-					class="wb-fold"
-				>
-					<summary>Product information</summary>
-					<div class="wb-fold-body">
-						{#if data.product.description}<p class="wb-muted">{data.product.description}</p>{/if}
-						<dl class="wb-lines">
+			<section class="wb-card" aria-label="Product information">
+				<h2>Product information</h2>
+				<ProductDocumentImport product={data.product} />
+				<dl class="wb-lines">
+					<div>
+						<dt>Brand</dt>
+						<dd>{data.product.brand || 'Not recorded'}</dd>
+					</div>
+					<div>
+						<dt>Model</dt>
+						<dd>{data.product.model || 'Not recorded'}</dd>
+					</div>
+					<div>
+						<dt>Variant</dt>
+						<dd>{data.product.variant || 'Not recorded'}</dd>
+					</div>
+					{#if data.product.currentPricePaise > 0}<div>
+							<dt>Saved item price</dt>
+							<dd>{formatRupees(data.product.currentPricePaise)}</dd>
+						</div>{/if}
+				</dl>
+				{#if Object.keys(data.product.specifications ?? {}).length}<details class="wb-fold">
+						<summary>Specifications</summary>
+						<dl class="wb-lines wb-fold-body">
 							{#each Object.entries(data.product.specifications ?? {}) as [key, value] (key)}<div>
 									<dt>{key}</dt>
 									<dd>{value}</dd>
 								</div>{/each}
 						</dl>
-						{#each data.product.warnings ?? [] as warning, index (index)}<p class="wb-muted">
-								{warning}
-							</p>{/each}
-					</div>
-				</details>{/if}
+					</details>{/if}
+				{#if data.product.notes}<details class="wb-fold">
+						<summary>Notes and terms</summary>
+						<p class="wb-muted wb-fold-body product-notes">{data.product.notes}</p>
+					</details>{/if}
+				{#if data.product.description}<details class="wb-fold">
+						<summary>Description</summary>
+						<p class="wb-muted wb-fold-body">{data.product.description}</p>
+					</details>{/if}
+				{#if data.product.warnings?.length}<details class="wb-fold">
+						<summary>Link lookup notes</summary>
+						<div class="wb-fold-body">
+							{#each data.product.warnings as warning, index (index)}<p class="wb-muted">
+									{warning}
+								</p>{/each}
+						</div>
+					</details>{/if}
+			</section>
 		</aside>
 	</div>
 </div>
 
 <style>
+	.product-notes {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
 	.product-overview {
 		display: flex;
 		align-items: center;

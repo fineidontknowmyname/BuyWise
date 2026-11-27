@@ -4,6 +4,9 @@ import { apiRequest, type Product, type Goal } from '#lib/server/api.js';
 import { apiUrl } from '#lib/server/config.js';
 import { marketDate } from '#lib/dates.js';
 import { parseRupees } from '#lib/money.js';
+import { processDocumentUpload } from '#lib/server/documents/service.js';
+import { parseReviewedDetails, reviewedProductPayload } from '#lib/server/documents/productSave.js';
+import { documentIdentityConflicts } from '#lib/documentProduct.js';
 import type { Actions, PageServerLoad } from './$types';
 
 type Offer = {
@@ -92,6 +95,63 @@ export const load: PageServerLoad = async ({ params, fetch, url }) => {
 };
 
 export const actions = {
+	uploadDocument: async ({ params, request, fetch }) => {
+		const product = await apiRequest<Product>(fetch, apiUrl(), path(params.id));
+		if (!product.ok) return fail(product.status, { error: product.error.message });
+		const upload = (await request.formData()).get('docFile');
+		if (!(upload instanceof File) || !upload.size)
+			return fail(400, { error: 'Choose a product document.' });
+		if (upload.size > 10 * 1024 * 1024)
+			return fail(400, { error: 'Choose a document smaller than 10 MB.' });
+		try {
+			const preview = await processDocumentUpload(
+				Buffer.from(await upload.arrayBuffer()),
+				upload.name,
+				upload.type,
+				'',
+				product.data.name,
+				fetch
+			);
+			if (!preview.productDetails)
+				return fail(422, {
+					error:
+						'No product details were detected. Use a document with product names, labelled fields or specifications.'
+				});
+			return { preview };
+		} catch (err) {
+			return fail(422, {
+				error: err instanceof Error ? err.message : 'Unable to read this document.'
+			});
+		}
+	},
+	saveDocumentDetails: async ({ params, request, fetch }) => {
+		const product = await apiRequest<Product>(fetch, apiUrl(), path(params.id));
+		if (!product.ok) return fail(product.status, { error: product.error.message });
+		const form = await request.formData();
+		let details;
+		try {
+			details = parseReviewedDetails(JSON.parse(String(form.get('details') ?? '{}')));
+		} catch (err) {
+			return fail(400, { error: err instanceof Error ? err.message : 'Invalid product details.' });
+		}
+		if (!Object.keys(details).length)
+			return fail(400, { error: 'Select at least one product field.' });
+		if (
+			documentIdentityConflicts(
+				{ model: product.data.model, variant: product.data.variant, url: product.data.url },
+				details
+			).length &&
+			form.get('identityConfirmed') !== 'yes'
+		)
+			return fail(409, { error: 'Confirm the product and variant before saving these fields.' });
+		const saved = await apiRequest<Product>(fetch, apiUrl(), path(params.id), {
+			method: 'PUT',
+			body: JSON.stringify(reviewedProductPayload(product.data, details))
+		});
+		return saved.ok
+			? { notice: 'Product details saved.' }
+			: fail(saved.status, { error: saved.error.message });
+	},
 	offer: async ({ params, request, fetch }) => {
 		const form = await request.formData();
 		const result = await apiRequest<Offer>(fetch, apiUrl(), path(params.id) + '/offers', {

@@ -14,6 +14,7 @@ import {
 } from '#lib/server/api.js';
 import { apiUrl } from '#lib/server/config.js';
 import { processDocumentUpload } from '#lib/server/documents/service.js';
+import { reviewedProductPayload } from '#lib/server/documents/productSave.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ fetch, params }) => {
@@ -316,34 +317,26 @@ export const actions: Actions = {
 			if (!linked.ok) return fail(linked.status, { error: linked.error.message });
 		} else {
 			// Update existing product
+			if (!existingProduct?.ok) return fail(409, { error: 'Reload this product before saving.' });
 			const updateRes = await apiRequest<Product>(fetch, base, `/products/${targetProdId}`, {
 				method: 'PUT',
-				body: JSON.stringify({
-					description: existingProduct?.ok ? existingProduct.data.description : '',
-					lastRetrievedAt: existingProduct?.ok ? existingProduct.data.lastRetrievedAt : null,
-					warnings: existingProduct?.ok ? existingProduct.data.warnings : [],
-					discountPercent:
-						originalPricePaise > currentPricePaise && originalPricePaise > 0
-							? ((originalPricePaise - currentPricePaise) / originalPricePaise) * 100
-							: 0,
-					name,
-					brand,
-					model,
-					variant,
-					category: existingProduct?.ok ? existingProduct.data.category : 'Shopping',
-					currentPricePaise,
-					originalPricePaise,
-					targetPricePaise,
-					currency,
-					availability,
-					specifications,
-					url,
-					imageUrl,
-					retailer,
-					notes,
-					source: 'manual',
-					verificationStatus: 'manual_entry'
-				})
+				body: JSON.stringify(
+					reviewedProductPayload(existingProduct.data, {
+						name,
+						brand,
+						model,
+						variant,
+						currentPricePaise,
+						originalPricePaise,
+						currency,
+						availability: availability as 'unknown' | 'in_stock' | 'out_of_stock' | 'pre_order',
+						specifications,
+						url,
+						imageUrl,
+						retailer,
+						notes
+					})
+				)
 			});
 			if (!updateRes.ok) {
 				return fail(updateRes.status, { error: updateRes.error.message });

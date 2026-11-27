@@ -29,3 +29,4 @@ reverse-engineering/
 /frontend/src/lib/reverseEmi.spec.ts
 /frontend/src/lib/server/documents/pdfUpload.spec.ts
 /frontend/src/lib/server/documents/productExtraction.spec.ts
+/frontend/src/lib/server/documents/productSave.spec.ts
