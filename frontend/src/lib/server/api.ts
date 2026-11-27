@@ -94,6 +94,7 @@ export type ImportBatch = {
 };
 
 export type Decision = {
+	priceBasis?: 'item_price' | 'saved_price' | 'checkout_total';
 	id?: string;
 	goalId: string;
 	goalName: string;

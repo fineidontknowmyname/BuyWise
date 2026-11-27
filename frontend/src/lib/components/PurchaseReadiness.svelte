@@ -40,7 +40,9 @@
 		decision.finance.state === 'READY'
 			? 'Ready'
 			: decision.finance.state === 'UNKNOWN'
-				? 'Needs information'
+				? decision.finance.reasonCodes.includes('funds_price_required')
+					? 'Awaiting product price'
+					: 'Needs information'
 				: 'Needs attention'
 	);
 	const priceStatus = $derived(
@@ -52,10 +54,19 @@
 	);
 	const firstReason = (codes: string[]) =>
 		decision.reasons.find((reason) => codes.includes(reason.code))?.message;
-	const needsGoalFunds = $derived(
-		decision.finance.state === 'NOT_READY' &&
-			decision.finance.reasonCodes[0] === 'goal_funds_shortfall'
+	const needsGoalFunds = $derived(decision.finance.reasonCodes.includes('goal_funds_shortfall'));
+	const priceRequired = $derived(decision.finance.reasonCodes.includes('funds_price_required'));
+	const priceLink = $derived(
+		decision.evidence.prices.productId
+			? resolve('/products/[id]/offers', { id: decision.evidence.prices.productId })
+			: resolve('/products')
 	);
+	const priceLabel = (value: Decision) =>
+		value.priceBasis === 'saved_price'
+			? 'Saved product price'
+			: value.priceBasis === 'item_price'
+				? 'Recorded item price'
+				: 'Recorded checkout total';
 </script>
 
 {#snippet readiness(value: Decision)}
@@ -78,7 +89,7 @@
 				<dd>{money(value.emergencyBalancePaise)} / {money(f.emergencyTargetPaise)}</dd>
 				<dt>Operating buffer</dt>
 				<dd>{f.profileRevision ? money(f.operatingBufferPaise) : 'Not set'}</dd>
-				<dt>Liquid cash after purchase and other goals</dt>
+				<dt>Estimated cash after purchase and other goals</dt>
 				<dd>{money(value.afterPurchasePaise)}</dd>
 				<dt>Monthly margin before buffer</dt>
 				<dd>{f.profileRevision ? money(f.monthlyMarginPaise) : 'Unknown'}</dd>
@@ -95,8 +106,10 @@
 				{/each}
 			</ul>
 			<dl>
-				<dt>Confirmed checkout</dt>
+				<dt>Price used for this check</dt>
 				<dd>{money(value.checkoutPaise)}</dd>
+				{#if value.checkoutPaise !== null}<dt>Price source</dt>
+					<dd>{priceLabel(value)}</dd>{/if}
 				{#if p.variant}
 					<dt>Tracked variant</dt>
 					<dd>{p.variant}</dd>
@@ -110,12 +123,6 @@
 					</dd>
 					<dt>Observed</dt>
 					<dd>{offer.observedAt ? stamp(offer.observedAt) : offer.observedOn}</dd>
-					<dt>Item · tax · delivery · discount</dt>
-					<dd>
-						{[offer.itemPaise, offer.taxPaise, offer.deliveryPaise, offer.discountPaise]
-							.map(money)
-							.join(' · ')}
-					</dd>
 					<dt>Comparable history</dt>
 					<dd>{offer.historyIds?.length ?? 0} days</dd>
 				{/if}
@@ -162,11 +169,17 @@
 			</div>
 			{#if decision.finance.state !== 'READY'}
 				<a
-					href={needsGoalFunds
-						? resolve('/goals/[id]/plan', { id: decision.goalId })
-						: resolve('/finances')}
+					href={priceRequired
+						? priceLink
+						: needsGoalFunds
+							? resolve('/goals/[id]/plan', { id: decision.goalId })
+							: resolve('/accounts')}
 				>
-					{needsGoalFunds ? 'Add goal funds' : 'Review finances'}
+					{priceRequired
+						? 'Add product price'
+						: needsGoalFunds
+							? 'Add goal funds'
+							: 'Review My Money'}
 				</a>
 			{/if}
 		</div>
@@ -175,7 +188,7 @@
 				<h3>Price <span>{priceStatus}</span></h3>
 				<p>
 					{decision.price.state === 'ATTRACTIVE'
-						? `${money(decision.checkoutPaise)} confirmed checkout total`
+						? `${money(decision.checkoutPaise)} · ${priceLabel(decision)}`
 						: firstReason(decision.price.reasonCodes)}
 				</p>
 			</div>
@@ -187,6 +200,11 @@
 				<a href={resolve('/products')}>Find product</a>
 			{/if}
 		</div>
+		{#if decision.priceBasis === 'item_price' || decision.priceBasis === 'saved_price'}<p
+				class="price-note"
+			>
+				Based on the saved item price. Checkout extras are not included; stock is not assessed.
+			</p>{/if}
 		{#if decision.reasonCodes.includes('goal_inactive')}
 			<p>This goal is inactive. Resume it before checking a purchase.</p>
 		{/if}
@@ -284,6 +302,11 @@
 	.check-row a {
 		font-size: 0.875rem;
 		font-weight: 550;
+	}
+	.price-note {
+		font-size: 12px;
+		color: var(--foreground-secondary);
+		margin-top: 10px;
 	}
 	summary {
 		cursor: pointer;

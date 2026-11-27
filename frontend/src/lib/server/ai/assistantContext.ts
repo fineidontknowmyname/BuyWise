@@ -205,7 +205,7 @@ export async function assistantContext(
 					fact('Rules', latest.rulesVersion),
 					fact('Saved assessment summary', latest.explanation),
 					fact('Backed goal funds at assessment', money(latest.backedGoalPaise)),
-					fact('Checkout evidence at assessment', money(latest.checkoutPaise)),
+					fact('Price used at assessment', money(latest.checkoutPaise)),
 					...latest.reasons.map((reason) => fact('BuyWise decision evidence', reason.message))
 				],
 				points: [

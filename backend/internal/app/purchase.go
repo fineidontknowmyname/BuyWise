@@ -45,6 +45,7 @@ func (p purchaseInputs) Inputs(ctx context.Context, goal decision.GoalRef, now t
 	}
 	result.Prices.ProductID, result.Prices.Variant = goal.ProductID.String(), prices.Variant
 	result.Prices.IdealPaise, result.Prices.GoodPaise, result.Prices.MaximumPaise = prices.Ideal, prices.Good, prices.Maximum
+	result.Prices.SavedPricePaise = prices.SavedPrice
 	for _, price := range prices.Offers {
 		result.Prices.Offers = append(result.Prices.Offers, decision.OfferEvidence{
 			OfferID: price.OfferID, Retailer: price.Retailer, Seller: price.Seller, ObservationID: price.ObservationID,

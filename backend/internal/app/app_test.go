@@ -108,7 +108,7 @@ func TestCreateGoalThenDecisionWithoutEvidence(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("decision code = %d, body %v", code, d)
 	}
-	if d["state"] != "REASSESS" || d["rulesVersion"] != "purchase-v1" || d["trigger"] != "live_preview" {
+	if d["state"] != "REASSESS" || d["rulesVersion"] != "purchase-v2" || d["trigger"] != "live_preview" {
 		t.Fatalf("decision = %v", d)
 	}
 	reasons, _ := d["reasonCodes"].([]any)

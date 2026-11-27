@@ -17,6 +17,7 @@ type PurchaseOffer struct {
 }
 
 type PurchasePrices struct {
+	SavedPrice           *int64
 	Variant              string
 	Ideal, Good, Maximum *int64
 	Offers               []PurchaseOffer
@@ -25,6 +26,7 @@ type PurchasePrices struct {
 func (s *Store) PurchasePrices(ctx context.Context, productID uuid.UUID, now time.Time) (PurchasePrices, error) {
 	rows, err := database.Scoped(ctx, s.pool).Query(ctx, `
 		SELECT p.variant, t.ideal_paise, t.good_paise, t.maximum_paise,
+			CASE WHEN p.currency='INR' AND p.current_price_paise>0 THEN p.current_price_paise ELSE NULL END,
 			COALESCE(o.id::text, ''), COALESCE(o.retailer, ''), COALESCE(o.seller, ''),
 			COALESCE(latest.id::text, ''), COALESCE(to_char(latest.observed_on, 'YYYY-MM-DD'), ''),
 			latest.observed_at, latest.fetched_at, COALESCE(latest.source, ''),
@@ -47,7 +49,7 @@ func (s *Store) PurchasePrices(ctx context.Context, productID uuid.UUID, now tim
 				FROM pricing.offer_observations r
 				WHERE r.offer_id = o.id AND r.observed_on >= $2::date - 90 AND r.observed_on < latest.observed_on
 				ORDER BY observed_on, observed_at DESC NULLS LAST, recorded_at DESC, id DESC
-			) daily WHERE availability = 'in_stock' AND landed IS NOT NULL
+			) daily WHERE landed IS NOT NULL
 		) history ON true
 		WHERE p.id = $1::uuid ORDER BY o.id`, productID.String(), marketDay(now), now)
 	if err != nil {
@@ -58,6 +60,7 @@ func (s *Store) PurchasePrices(ctx context.Context, productID uuid.UUID, now tim
 	for rows.Next() {
 		var offer PurchaseOffer
 		if err := rows.Scan(&result.Variant, &result.Ideal, &result.Good, &result.Maximum,
+			&result.SavedPrice,
 			&offer.OfferID, &offer.Retailer, &offer.Seller, &offer.ObservationID, &offer.ObservedOn,
 			&offer.ObservedAt, &offer.FetchedAt, &offer.Source, &offer.SourceLabel, &offer.Availability,
 			&offer.ItemPaise, &offer.TaxPaise, &offer.DeliveryPaise, &offer.DiscountPaise,

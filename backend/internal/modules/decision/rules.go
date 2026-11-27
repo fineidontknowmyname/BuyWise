@@ -9,6 +9,7 @@ var marketZone = time.FixedZone("IST", 19800)
 const minimumHistoryDays = 5
 
 var reasons = map[string]struct{ message, action string }{
+	"funds_price_required":     {"Add a product price to compare it with your goal savings.", "Save a product price or record an item price on the offer."},
 	"money_month_review":       {"Your spending plan needs a new-month review.", "Review unused spending in My Money before relying on a purchase recommendation."},
 	"goal_inactive":            {"The goal is paused, completed, or cancelled.", "Resume an eligible goal before reassessing this purchase."},
 	"profile_missing":          {"There is no saved financial profile.", "Save a financial profile with current income, expenses, debt and reserve settings."},
@@ -25,9 +26,9 @@ var reasons = map[string]struct{ message, action string }{
 	"observation_missing":      {"There is no price observation for the confirmed offer.", "Record or refresh a price on the retailer offer."},
 	"observation_stale":        {"The latest usable offer evidence is too old.", "Record a current quote or refresh the retailer offer."},
 	"availability_unconfirmed": {"The latest observation does not confirm this offer is in stock.", "Confirm availability and record an updated offer."},
-	"checkout_unknown":         {"The complete checkout total is unavailable.", "Record item price, tax, delivery and confirmed discounts. Enter zero only for a confirmed zero amount."},
+	"checkout_unknown":         {"No usable item price is saved for this offer.", "Save a product price or record an item price on the offer."},
 	"above_maximum":            {"The checkout total exceeds the maximum purchase price.", "Wait for a checkout total within the maximum."},
-	"within_target":            {"The checkout total meets the saved acceptable price.", ""},
+	"within_target":            {"The assessed price meets your saved acceptable price.", ""},
 	"historically_attractive":  {"The checkout total meets a historical discount benchmark for this same offer.", ""},
 	"price_unattractive":       {"The checkout total misses the available price benchmarks.", "Wait for a qualifying price or review the saved thresholds."},
 	"no_price_benchmark":       {"There is no acceptable price threshold or enough comparable history.", "Set an ideal or good price, or collect at least five comparable observation days."},
@@ -39,9 +40,18 @@ func Evaluate(goal GoalRef, evidence Evidence, now time.Time) Decision {
 		Evidence: evidence, Reasons: []Reason{}, NextSteps: []string{},
 		Assumptions: []string{
 			"Financial readiness uses recorded liquid cash, designated reserves, the saved profile and declared debt status.",
-			"Price readiness uses confirmed checkout components, saved targets and comparable history for the same retailer offer. Forecasts are excluded.",
+			"Price readiness uses a recorded item price or saved product price. A complete recorded checkout breakdown is used when available; unknown extras are not assumed to be zero. Stock availability is not assessed. Forecasts are excluded.",
 		}}
 	d.Price, d.SelectedOffer, d.CheckoutPaise = assessPrice(goal, evidence.Prices, now)
+	if d.CheckoutPaise != nil {
+		d.PriceBasis = "saved_price"
+		if d.SelectedOffer != nil {
+			d.PriceBasis = "item_price"
+			if d.SelectedOffer.completeCheckout() {
+				d.PriceBasis = "checkout_total"
+			}
+		}
+	}
 	d.Finance = d.assessFinances()
 	if goal.Status != "active" {
 		d.ReasonCodes = append(d.ReasonCodes, "goal_inactive")
@@ -66,10 +76,10 @@ func Evaluate(goal GoalRef, evidence Evidence, now time.Time) Decision {
 	}
 	switch d.State {
 	case Buy:
-		d.Explanation = "The observed checkout price is attractive and backed goal funds can cover it while preserving the configured protections."
+		d.Explanation = "The saved price meets your price criteria and goal savings cover it while preserving protected money."
 		d.NextSteps = append(d.NextSteps, "Reassess if the seller, checkout total, availability or available funds change.")
 	case Wait:
-		d.Explanation = "The goal can cover the observed checkout price, but the offer misses the price criteria."
+		d.Explanation = "Goal savings cover the assessed price, but it is above your price criteria."
 	case SaveMore:
 		d.Explanation = "The offer meets the price criteria, but the financial protections are not all met."
 	default:
@@ -99,6 +109,9 @@ func (d *Decision) assessFinances() Axis {
 	}
 
 	out := Axis{State: "UNKNOWN", ReasonCodes: []string{}}
+	if d.CheckoutPaise == nil && f.ProfileRevision > 0 && f.DebtStatus != "" {
+		out.ReasonCodes = append(out.ReasonCodes, "funds_price_required")
+	}
 	if f.ProfileRevision == 0 {
 		out.ReasonCodes = append(out.ReasonCodes, "profile_missing")
 	} else if f.DebtStatus == "" {
@@ -140,9 +153,6 @@ func assessPrice(goal GoalRef, evidence PriceEvidence, now time.Time) (Axis, *Of
 	if evidence.ProductID != goal.ProductID.String() {
 		return priceResult("UNKNOWN", "product_mismatch"), nil, nil
 	}
-	if len(evidence.Offers) == 0 {
-		return priceResult("UNKNOWN", "offer_missing"), nil, nil
-	}
 	var chosen, fallback *OfferEvidence
 	var checkout int64
 	for i := range evidence.Offers {
@@ -156,9 +166,19 @@ func assessPrice(goal GoalRef, evidence PriceEvidence, now time.Time) (Axis, *Of
 		}
 	}
 	if chosen == nil {
+		if evidence.SavedPricePaise != nil && *evidence.SavedPricePaise > 0 && *evidence.SavedPricePaise <= 1000000000000 {
+			return assessKnownPrice(goal, evidence, nil, *evidence.SavedPricePaise)
+		}
+		if fallback == nil {
+			return priceResult("UNKNOWN", "offer_missing"), nil, nil
+		}
 		_, problem := fallback.checkout(now)
 		return priceResult("UNKNOWN", problem), fallback, nil
 	}
+	return assessKnownPrice(goal, evidence, chosen, checkout)
+}
+
+func assessKnownPrice(goal GoalRef, evidence PriceEvidence, chosen *OfferEvidence, checkout int64) (Axis, *OfferEvidence, *int64) {
 
 	maximum := goal.TargetPaise
 	if evidence.MaximumPaise != nil {
@@ -170,7 +190,10 @@ func assessPrice(goal GoalRef, evidence PriceEvidence, now time.Time) (Axis, *Of
 	} else if evidence.IdealPaise != nil {
 		acceptable = *evidence.IdealPaise
 	}
-	days := int64(len(chosen.HistoryIDs))
+	var days int64
+	if chosen != nil && chosen.completeCheckout() {
+		days = int64(len(chosen.HistoryIDs))
+	}
 	switch {
 	case maximum > 0 && checkout > maximum:
 		return priceResult("NOT_ATTRACTIVE", "above_maximum"), chosen, &checkout
@@ -209,11 +232,15 @@ func (offer OfferEvidence) checkout(now time.Time) (int64, string) {
 		offer.ObservedOn != now.In(marketZone).AddDate(0, 0, -1).Format(time.DateOnly) {
 		return 0, "observation_stale"
 	}
-	if offer.Availability != "in_stock" {
-		return 0, "availability_unconfirmed"
-	}
-	if offer.ItemPaise == nil || offer.TaxPaise == nil || offer.DeliveryPaise == nil || offer.DiscountPaise == nil {
+	if offer.ItemPaise == nil {
 		return 0, "checkout_unknown"
 	}
+	if !offer.completeCheckout() {
+		return *offer.ItemPaise, ""
+	}
 	return *offer.ItemPaise + *offer.TaxPaise + *offer.DeliveryPaise - *offer.DiscountPaise, ""
+}
+
+func (offer OfferEvidence) completeCheckout() bool {
+	return offer.ItemPaise != nil && offer.TaxPaise != nil && offer.DeliveryPaise != nil && offer.DiscountPaise != nil
 }

@@ -61,8 +61,8 @@ func TestDecisionQualifications(t *testing.T) {
 	}{
 		{"different variant", "product_mismatch", Reassess, func(_ *GoalRef, e *Evidence, _ *time.Time) { e.Prices.ProductID = uuid.NewV7().String() }},
 		{"exact freshness boundary", "observation_stale", Reassess, func(_ *GoalRef, _ *Evidence, now *time.Time) { *now = now.Add(48 * time.Hour) }},
-		{"stock missing", "availability_unconfirmed", Reassess, func(_ *GoalRef, e *Evidence, _ *time.Time) { e.Prices.Offers[0].Availability = "out_of_stock" }},
-		{"delivery missing", "checkout_unknown", Reassess, func(_ *GoalRef, e *Evidence, _ *time.Time) { e.Prices.Offers[0].DeliveryPaise = nil }},
+		{"stock is outside purchase check", "within_target", Buy, func(_ *GoalRef, e *Evidence, _ *time.Time) { e.Prices.Offers[0].Availability = "out_of_stock" }},
+		{"delivery is optional", "within_target", Buy, func(_ *GoalRef, e *Evidence, _ *time.Time) { e.Prices.Offers[0].DeliveryPaise = nil }},
 		{"paused", "goal_inactive", Reassess, func(g *GoalRef, _ *Evidence, _ *time.Time) { g.Status = "paused" }},
 		{"reserve below target", "emergency_shortfall", SaveMore, func(_ *GoalRef, e *Evidence, _ *time.Time) { e.Finances.Accounts[1].BalancePaise-- }},
 		{"emergency savings excluded", "goal_funds_shortfall", SaveMore, func(_ *GoalRef, e *Evidence, _ *time.Time) { e.Finances.Accounts[0].GoalReservedPaise = 9000 }},

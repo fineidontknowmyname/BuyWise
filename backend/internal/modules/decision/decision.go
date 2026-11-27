@@ -14,7 +14,7 @@ const (
 	Wait         State = "WAIT"
 	SaveMore     State = "SAVE_MORE"
 	Reassess     State = "REASSESS"
-	RulesVersion       = "purchase-v1"
+	RulesVersion       = "purchase-v2"
 )
 
 var ErrGoalNotFound = errors.New("goal not found")
@@ -67,12 +67,13 @@ type OfferEvidence struct {
 }
 
 type PriceEvidence struct {
-	ProductID    string          `json:"productId"`
-	Variant      string          `json:"variant"`
-	IdealPaise   *int64          `json:"idealPaise"`
-	GoodPaise    *int64          `json:"goodPaise"`
-	MaximumPaise *int64          `json:"maximumPaise"`
-	Offers       []OfferEvidence `json:"offers"`
+	SavedPricePaise *int64          `json:"savedPricePaise,omitempty"`
+	ProductID       string          `json:"productId"`
+	Variant         string          `json:"variant"`
+	IdealPaise      *int64          `json:"idealPaise"`
+	GoodPaise       *int64          `json:"goodPaise"`
+	MaximumPaise    *int64          `json:"maximumPaise"`
+	Offers          []OfferEvidence `json:"offers"`
 }
 
 type Evidence struct {
@@ -91,6 +92,7 @@ type Reason struct {
 }
 
 type Decision struct {
+	PriceBasis            string         `json:"priceBasis,omitempty"`
 	ID                    string         `json:"id,omitempty"`
 	GoalID                string         `json:"goalId"`
 	GoalName              string         `json:"goalName"`
