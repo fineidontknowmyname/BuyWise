@@ -3,6 +3,7 @@ import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
+	server: { watch: { ignored: ['**/.verification/**'] } },
 	plugins: [
 		sveltekit({
 			compilerOptions: {
